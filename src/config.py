@@ -1,0 +1,12 @@
+import sys
+from pathlib import Path
+
+GLOBAL_DIR = Path(__file__).parent / ".."
+sys.path.append(str(GLOBAL_DIR))
+
+DATA_PATH = str(GLOBAL_DIR / "data") + "/"
+RAW_EYE_TRACKING_DATA_PATH = f"{DATA_PATH}eye_tracking/raw"
+PROCESSED_EYE_TRACKING_DATA_PATH = f"{DATA_PATH}eye_tracking/processed"
+
+RAW_EYE_TRACKING_FRAME_WIDTH = 6000
+RAW_EYE_TRACKING_FRAME_HEIGHT = 3000
