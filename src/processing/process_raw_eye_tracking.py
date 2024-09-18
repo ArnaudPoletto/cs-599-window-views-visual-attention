@@ -118,7 +118,7 @@ def __get_dst_file_paths(src_file_paths) -> List[str]:
         dst_file_path += "/processed"
         dst_file_path += f"/experiment{experiment_number}"
         dst_file_path += f"/session{session_number}"
-        dst_file_path += f"/participant{participant_id}_{file_name_data}.csv"
+        dst_file_path += f"/participant{participant_id:02d}_{file_name_data}.csv"
 
         dst_file_paths.append(dst_file_path)
 
@@ -139,14 +139,46 @@ def __process_data(
     """
     raw_data = raw_data.copy()
 
+    # Delete entries with NaN values
+    raw_data = raw_data.dropna()
+
     # Remove false center gaze points
     raw_data = raw_data[
         (raw_data["GazeX"] != int(RAW_EYE_TRACKING_FRAME_WIDTH / 2))
         & (raw_data["GazeY"] != int(RAW_EYE_TRACKING_FRAME_HEIGHT / 2))
     ]
 
-    # Delete entries with NaN values
-    raw_data = raw_data.dropna()
+    raw_data["GazeX"] = raw_data["GazeX"] / RAW_EYE_TRACKING_FRAME_WIDTH
+    raw_data["GazeY"] = raw_data["GazeY"] / RAW_EYE_TRACKING_FRAME_HEIGHT
+
+    # Get experiment, session and participant ids
+    raw_data["ExperimentId"] = raw_data["Id"] // 1000 # Is the thousands digit
+    raw_data["SessionId"] = raw_data["Id"] % 10 # Is the unit digit
+    raw_data["ParticipantId"] = (raw_data["Id"] % 1000) // 10 # Is the hundreds and tens digit
+
+    # Remove vector gaze information and id
+    raw_data = raw_data.drop(
+        columns=[
+            "VectorGazeX",
+            "VectorGazeY",
+            "VectorGazeZ",
+            "Id",
+            "SequenceSet",
+        ]
+    )
+
+    # Reorder columns
+    raw_data = raw_data[
+        [
+            "ExperimentId",
+            "SessionId",
+            "ParticipantId",
+            "SequenceId",
+            "GazeX",
+            "GazeY",
+            "Timestamp",
+        ]
+    ]
 
     return raw_data
 
@@ -172,7 +204,7 @@ def __process_files(src_file_paths: List[str], dst_file_paths: List[str]):
         processed_data = __process_data(raw_data)
 
         if processed_data.empty:
-            print(f"⚠️ No data left after processing file {src_file_path}, skipping...")
+            print(f" ⚠️  No data left after processing file {src_file_path}, skipping...")
             continue
 
         # Save the processed eye tracking data
