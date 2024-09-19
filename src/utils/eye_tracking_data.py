@@ -23,6 +23,11 @@ def get_eye_tracking_data(
         experiment_id (int | None, optional): The experiment id. Defaults to None.
         session_id (int | None, optional): The session id. Defaults to None.
         participant_ids (List[int] | None, optional): The participant id. Defaults to None.
+
+    Raises:
+        ValueError: If the experiment id is not 1 or 2.
+        ValueError: If the session id is not 1 or 2.
+        ValueError: If no data is found for the provided ids.
     """
     if experiment_id is not None and experiment_id not in [1, 2]:
         raise ValueError(f"❌ Invalid experiment id: {experiment_id}, must be 1 or 2.")
@@ -47,6 +52,9 @@ def get_eye_tracking_data(
             if any(p.stem.startswith(f"participant{pid}_") for pid in participant_ids_str)
         ]
 
+    if not file_paths:
+        raise ValueError(f"❌ No data found for experiment {experiment_id}, session {session_id}, and participant(s) {participant_ids}.") 
+    
     # Load data
     data = None
     for file_path in file_paths:
@@ -60,5 +68,6 @@ def get_eye_tracking_data(
             data = file_data
         else:
             data = pd.concat([data, file_data])
+
 
     return data

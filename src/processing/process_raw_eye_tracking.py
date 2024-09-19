@@ -7,7 +7,7 @@ sys.path.append(str(GLOBAL_DIR))
 import os
 import pandas as pd
 from tqdm import tqdm
-from typing import List
+from typing import List, Tuple
 
 from src.utils.string import find_and_get_next_char_index
 from src.config import (
@@ -17,8 +17,10 @@ from src.config import (
     PROCESSED_EYE_TRACKING_DATA_PATH,
 )
 
+OUTLIER_VALUES = (3000, 1500)
 
-def __delete_processed_files():
+
+def __delete_processed_files() -> None:
     """
     Delete the processed eye tracking data files.
     """
@@ -144,17 +146,19 @@ def __process_data(
 
     # Remove false center gaze points
     raw_data = raw_data[
-        (raw_data["GazeX"] != int(RAW_EYE_TRACKING_FRAME_WIDTH / 2))
-        & (raw_data["GazeY"] != int(RAW_EYE_TRACKING_FRAME_HEIGHT / 2))
+        (raw_data["GazeX"] != OUTLIER_VALUES[0])
+        & (raw_data["GazeY"] != OUTLIER_VALUES[1])
     ]
 
     raw_data["GazeX"] = raw_data["GazeX"] / RAW_EYE_TRACKING_FRAME_WIDTH
     raw_data["GazeY"] = raw_data["GazeY"] / RAW_EYE_TRACKING_FRAME_HEIGHT
 
     # Get experiment, session and participant ids
-    raw_data["ExperimentId"] = raw_data["Id"] // 1000 # Is the thousands digit
-    raw_data["SessionId"] = raw_data["Id"] % 10 # Is the unit digit
-    raw_data["ParticipantId"] = (raw_data["Id"] % 1000) // 10 # Is the hundreds and tens digit
+    raw_data["ExperimentId"] = raw_data["Id"] // 1000  # Is the thousands digit
+    raw_data["SessionId"] = raw_data["Id"] % 10  # Is the unit digit
+    raw_data["ParticipantId"] = (
+        raw_data["Id"] % 1000
+    ) // 10  # Is the hundreds and tens digit
 
     # Remove vector gaze information and id
     raw_data = raw_data.drop(
@@ -183,7 +187,7 @@ def __process_data(
     return raw_data
 
 
-def __process_files(src_file_paths: List[str], dst_file_paths: List[str]):
+def __process_files(src_file_paths: List[str], dst_file_paths: List[str]) -> None:
     """
     Process the raw eye tracking data files.
 
@@ -204,7 +208,9 @@ def __process_files(src_file_paths: List[str], dst_file_paths: List[str]):
         processed_data = __process_data(raw_data)
 
         if processed_data.empty:
-            print(f" ⚠️  No data left after processing file {src_file_path}, skipping...")
+            print(
+                f" ⚠️  No data left after processing file {src_file_path}, skipping..."
+            )
             continue
 
         # Save the processed eye tracking data
@@ -214,7 +220,14 @@ def __process_files(src_file_paths: List[str], dst_file_paths: List[str]):
     print(f"✅ Eye tracking files processed.")
 
 
-def __merge_files(participant_number: int, participant_file_paths: List[str]):
+def __merge_files(participant_number: int, participant_file_paths: List[str]) -> None:
+    """
+    Merge the participant raw eye tracking files.
+
+    Args:
+        participant_number (int): The participant number
+        participant_file_paths (List[str]): List of the participant raw eye tracking file paths
+    """
     if len(participant_file_paths) == 1:
         return
 
@@ -252,7 +265,7 @@ def __merge_files(participant_number: int, participant_file_paths: List[str]):
         os.remove(participant_file_path)
 
 
-def __merge_participant_files():
+def __merge_participant_files() -> None:
     """
     Merge the participant raw eye tracking files.
     """
@@ -281,7 +294,7 @@ def __merge_participant_files():
     print("✅ Participant files merged.")
 
 
-def main():
+def main() -> None:
     """
     Main function for processing the raw eye tracking data.
     """
