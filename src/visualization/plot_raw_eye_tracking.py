@@ -17,14 +17,14 @@ from src.config import SETS_PATH, GENERATED_PATH
 
 
 N_HNANOSECONDS_IN_SECONDS = 1e7  # Number of hundred nanoseconds in a second
-FRAME_WIDTH = 768
-FRAME_HEIGHT = 384
-FPS = 144
-CIRCLE_RADIUS = 3
-LINE_THICKNESS = 1
 END_BACKGROUND_DARK_RATIO = 0.5
-TRAIL_LENGTH = 10
 COLORMAP = cv2.COLORMAP_JET
+DEFAULT_FRAME_WIDTH = 768
+DEFAULT_FRAME_HEIGHT = 384
+DEFAULT_FPS = 60
+DEFAULT_CIRCLE_RADIUS = 3
+DEFAULT_LINE_THICKNESS = 1
+DEFAULT_TRAIL_LENGTH = 10
 
 
 def __get_grouped_eye_tracking_data(
@@ -32,6 +32,7 @@ def __get_grouped_eye_tracking_data(
     session_id: int,
     participant_ids: int | None,
     sequence_id: int,
+    fps: int,
 ) -> List[pd.DataFrame]:
     """
     Get the eye tracking data grouped by single sequence experiment.
@@ -41,6 +42,7 @@ def __get_grouped_eye_tracking_data(
         session_id (int): The session ID.
         participant_ids (int | None): The participant IDs.
         sequence_id (int): The sequence ID.
+        fps (int): The frames per second.
 
     Raises:
         ValueError: If no data is found for the provided ids.
@@ -72,7 +74,7 @@ def __get_grouped_eye_tracking_data(
         group = group.copy()
         group = group.sort_values("Timestamp")
         group["TimeDiff"] = group["Timestamp"].diff().fillna(0)
-        group["FrameDiff"] = group["TimeDiff"] / N_HNANOSECONDS_IN_SECONDS * FPS
+        group["FrameDiff"] = group["TimeDiff"] / N_HNANOSECONDS_IN_SECONDS * fps
         group["FrameNumber"] = group["FrameDiff"].cumsum().astype(int)
         group.drop(columns=["TimeDiff", "FrameDiff"], inplace=True)
         groups[i] = group
@@ -86,6 +88,8 @@ def __get_background(
     experiment_id: int,
     session_id: int,
     sequence_id: int,
+    frame_width: int,
+    frame_height: int,
 ) -> Tuple[np.ndarray | List[np.ndarray], float | None]:
     """
     Get the background for the given experiment, session, and sequence.
@@ -94,6 +98,8 @@ def __get_background(
         experiment_id (int): The experiment ID.
         session_id (int): The session ID.
         sequence_id (int): The sequence ID.
+        frame_width (int): The frame width.
+        frame_height (int): The frame height.
     """
     print(
         f"⌛ Getting background for experiment {experiment_id}, session {session_id}, and sequence {sequence_id}..."
@@ -105,7 +111,7 @@ def __get_background(
     if experiment_id == 1 and session_id == 1:
         background_file_path += f"/images/scene{sequence_id}.png"
         background = cv2.imread(background_file_path)
-        background = cv2.resize(background, (FRAME_WIDTH, FRAME_HEIGHT))
+        background = cv2.resize(background, (frame_width, frame_height))
         background_fps = None
     # Other sessions have videos as background
     else:
@@ -124,7 +130,7 @@ def __get_background(
             if not ret:
                 break
 
-            frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
+            frame = cv2.resize(frame, (frame_width, frame_height))
             background.append(frame)
         video_capture.release()
 
@@ -136,6 +142,7 @@ def __get_background_frame(
         background: np.ndarray | List[np.ndarray],
         curr_frame: int,
         background_fps: float | None,
+        fps: int,
     ) -> np.ndarray:
     """
     Get the background frame for the given frame number.
@@ -143,12 +150,13 @@ def __get_background_frame(
     Args:
         background (np.ndarray | List[np.ndarray]): The background image or video.
         curr_frame (int): The current frame number.
-        background_fps (float | None): The background FPS.
+        background_fps (float | None): The background frames per second.
+        fps (int): The frames per second.
     """
     if isinstance(background, np.ndarray):
         frame = background.copy()
     else:
-        curr_background_frame = int(curr_frame * background_fps / FPS)
+        curr_background_frame = int(curr_frame * background_fps / fps)
         darken_ratio = 1 if curr_background_frame < len(background) else END_BACKGROUND_DARK_RATIO
         curr_background_frame = min(curr_background_frame, len(background) - 1)
         frame = background[curr_background_frame].copy()
@@ -200,6 +208,10 @@ def __update_coordinates_buffers(
 def __draw_gaze_sequence(
     coordinates_buffers: List[CoordinatesBuffer],
     frame: np.ndarray,
+    frame_width: int,
+    frame_height: int,
+    circle_radius: int,
+    line_thickness: int,
 ) -> np.ndarray:
     """
     Draw the gaze sequence on the frame.
@@ -207,6 +219,10 @@ def __draw_gaze_sequence(
     Args:
         coordinates_buffers (List[CoordinatesBuffer]): The coordinates buffers.
         frame (np.ndarray): The frame.
+        frame_width (int): The frame width.
+        frame_height (int): The frame height.
+        circle_radius (int): The circle radius.
+        line_thickness (int): The line thickness.
 
     Returns:
         np.ndarray: The frame with the gaze sequence drawn.
@@ -223,31 +239,32 @@ def __draw_gaze_sequence(
 
         # Draw last point in buffer
         x, y = coordinate_buffer.get_most_recent()
-        x = int(x * FRAME_WIDTH)
-        y = int(y * FRAME_HEIGHT)
+        x = int(x * frame_width)
+        y = int(y * frame_height)
         color = colors[i].tolist()
         cv2.circle(
             overlay,
             (x, y),
-            radius=CIRCLE_RADIUS,
+            radius=circle_radius,
             color=color,
             thickness=-1,
         )
         for ((x1, y1), (x2, y2)) in zip(coordinate_buffer, coordinate_buffer[1:]):
-            x1 = int(x1 * FRAME_WIDTH)
-            y1 = int(y1 * FRAME_HEIGHT)
-            x2 = int(x2 * FRAME_WIDTH)
-            y2 = int(y2 * FRAME_HEIGHT)
+            x1 = int(x1 * frame_width)
+            y1 = int(y1 * frame_height)
+            x2 = int(x2 * frame_width)
+            y2 = int(y2 * frame_height)
             cv2.line(
                 overlay,
                 (x1, y1),
                 (x2, y2),
                 color=color,
-                thickness=LINE_THICKNESS,
+                thickness=line_thickness,
             )
 
     overlay_mask = overlay.sum(axis=2) > 0
     frame[overlay_mask] = overlay[overlay_mask]
+
     return frame
 
 def __draw_information(
@@ -257,9 +274,10 @@ def __draw_information(
     experiment_id: int,
     session_id: int,
     sequence_id: int,
+    frame_width: int,
     font: int = cv2.FONT_HERSHEY_SIMPLEX,
     font_scale: float = 0.5,
-    margin: int = 20
+    margin: int = 20,
 ) -> np.ndarray:
     """
     Draw the information on the frame.
@@ -268,6 +286,13 @@ def __draw_information(
         frame (np.ndarray): The frame.
         curr_frame (int): The current frame number.
         max_frame (int): The maximum frame number.
+        experiment_id (int): The experiment ID.
+        session_id (int): The session ID.
+        sequence_id (int): The sequence ID.
+        frame_width (int): The frame width.
+        font (int, optional): The font. Defaults to cv2.FONT_HERSHEY_SIMPLEX.
+        font_scale (float, optional): The font scale. Defaults to 0.5.
+        margin (int, optional): The margin. Defaults to 20.
 
     Returns:
         np.ndarray: The frame with the information drawn.
@@ -291,7 +316,7 @@ def __draw_information(
     n_digits = len(str(max_frame))
     frame_text = f"Frame {str(curr_frame).zfill(n_digits)}/{max_frame}"
     frame_text_size = cv2.getTextSize(frame_text, font, font_scale, 1)[0]
-    frame_text_x = FRAME_WIDTH - frame_text_size[0] - margin
+    frame_text_x = frame_width - frame_text_size[0] - margin
     frame_text_y = margin
     cv2.putText(
         frame,
@@ -312,6 +337,12 @@ def __visualize_gaze_sequence(
     participant_ids: int | None,
     sequence_id: int,
     output_file_path: str,
+    frame_width: int,
+    frame_height: int,
+    fps: int,
+    circle_radius: int,
+    line_thickness: int,
+    trail_length: int
 ) -> None:
     """
     Visualize the gaze sequence for the given experiment, session, participant(s), and sequence.
@@ -321,8 +352,13 @@ def __visualize_gaze_sequence(
         session_id (int): The session ID.
         participant_ids (int | None): The participant IDs.
         sequence_id (int): The sequence ID.
-        output_file_path (str): The output file path
-        
+        output_file_path (str): The output file path.
+        frame_width (int): The frame width.
+        frame_height (int): The frame height.
+        fps (int): The frames per second.
+        circle_radius (int): The circle radius.
+        line_thickness (int): The line thickness.
+        trail_length (int): The trail length.
     """
     # Get eye tracking data
     groups = __get_grouped_eye_tracking_data(
@@ -330,6 +366,7 @@ def __visualize_gaze_sequence(
         session_id=session_id,
         participant_ids=participant_ids,
         sequence_id=sequence_id,
+        fps=fps,
     )
 
     # Get background image or video
@@ -337,14 +374,16 @@ def __visualize_gaze_sequence(
         experiment_id=experiment_id,
         session_id=session_id,
         sequence_id=sequence_id,
+        frame_width=frame_width,
+        frame_height=frame_height,
     )
 
     # Initialize video writer
     fourcc = cv2.VideoWriter_fourcc("a", "v", "c", "1")
-    out = cv2.VideoWriter(output_file_path, fourcc, FPS, (FRAME_WIDTH, FRAME_HEIGHT))
+    out = cv2.VideoWriter(output_file_path, fourcc, fps, (frame_width, frame_height))
 
     curr_frame = 0
-    coordinates_buffers = [CoordinatesBuffer(max_length=TRAIL_LENGTH) for _ in groups]
+    coordinates_buffers = [CoordinatesBuffer(max_length=trail_length) for _ in groups]
     next_frames = [group["FrameNumber"].iloc[0] for group in groups]
     max_frame = max([group["FrameNumber"].max() for group in groups])
     bar = tqdm(total=max_frame, desc="⌛ Generating gaze video...", unit="frames")
@@ -355,6 +394,7 @@ def __visualize_gaze_sequence(
             background=background,
             curr_frame=curr_frame,
             background_fps=background_fps,
+            fps=fps,
         )
 
         # Update current gaze coordinates
@@ -370,6 +410,10 @@ def __visualize_gaze_sequence(
         frame = __draw_gaze_sequence(
             coordinates_buffers=coordinates_buffers,
             frame=frame,
+            frame_width=frame_width,
+            frame_height=frame_height,
+            circle_radius=circle_radius,
+            line_thickness=line_thickness,
         )
 
         frame = __draw_information(
@@ -378,7 +422,8 @@ def __visualize_gaze_sequence(
             max_frame=max_frame,
             experiment_id=experiment_id,
             session_id=session_id,
-            sequence_id=sequence_id
+            sequence_id=sequence_id,
+            frame_width=frame_width,
         )
 
         out.write(frame)
@@ -398,21 +443,28 @@ def parse_arguments() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description="Visualize gaze sequence.")
     parser.add_argument(
-        "--experiment_id",
+        "--experiment-id",
         "-e",
         type=int,
         required=True,
         help="The experiment ID.",
     )
     parser.add_argument(
-        "--session_id",
+        "--session-id",
         "-se",
         type=int,
         required=True,
         help="The session ID.",
     )
     parser.add_argument(
-        "--participant_ids",
+        "--sequence-id",
+        "-sq",
+        type=int,
+        required=True,
+        help="The sequence ID.",
+    )
+    parser.add_argument(
+        "--participant-ids",
         "-p",
         type=int,
         nargs="+",
@@ -420,18 +472,61 @@ def parse_arguments() -> argparse.Namespace:
         help="The participant IDs.",
     )
     parser.add_argument(
-        "--sequence_id",
-        "-sq",
-        type=int,
-        required=True,
-        help="The sequence ID.",
-    )
-    parser.add_argument(
-        "--output_file_path",
+        "--output-file-path",
+        "-out",
         type=str,
         default=f"{GENERATED_PATH}/gaze_sequence.mp4",
         help="The output file path.",
     )
+    parser.add_argument(
+        "--frame-width",
+        "-fw",
+        type=int,
+        default=DEFAULT_FRAME_WIDTH,
+        help="The frame width.",
+    )
+    parser.add_argument(
+        "--frame_height",
+        "-fh",
+        type=int,
+        default=DEFAULT_FRAME_HEIGHT,
+        help="The frame height.",
+    )
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=DEFAULT_FPS,
+        help="The frames per second.",
+    )
+    parser.add_argument(
+        "--circle_radius",
+        "-r",
+        type=int,
+        default=DEFAULT_CIRCLE_RADIUS,
+        help="The circle radius.",
+    )
+    parser.add_argument(
+        "--line_thickness",
+        "-t",
+        type=int,
+        default=DEFAULT_LINE_THICKNESS,
+        help="The line thickness.",
+    )
+    parser.add_argument(
+        "--trail_length",
+        "-l",
+        type=int,
+        default=DEFAULT_TRAIL_LENGTH,
+        help="The trail length.",
+    )
+    parser.add_argument(
+        "--speed",
+        "-s",
+        type=int,
+        default=1,
+        help="The speed.",
+    )
+
     return parser.parse_args()
 
 def main() -> None:
@@ -444,6 +539,12 @@ def main() -> None:
     participant_ids = args.participant_ids
     sequence_id = args.sequence_id
     output_file_path = args.output_file_path
+    frame_width = args.frame_width
+    frame_height = args.frame_height
+    fps = args.fps
+    circle_radius = args.circle_radius
+    line_thickness = args.line_thickness
+    trail_length = args.trail_length
 
     __visualize_gaze_sequence(
         experiment_id=experiment_id,
@@ -451,6 +552,12 @@ def main() -> None:
         participant_ids=participant_ids,
         sequence_id=sequence_id,
         output_file_path=output_file_path, 
+        frame_width=frame_width,
+        frame_height=frame_height,
+        fps=fps,
+        circle_radius=circle_radius,
+        line_thickness=line_thickness,
+        trail_length=trail_length,
     )
 
 
