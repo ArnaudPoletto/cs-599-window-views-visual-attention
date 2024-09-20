@@ -7,37 +7,31 @@ sys.path.append(str(GLOBAL_DIR))
 import os
 import pandas as pd
 from tqdm import tqdm
-from typing import List, Tuple
 
-from src.utils.string import find_and_get_next_char_index
+from src.utils.eye_tracking_data import with_time_since_start_column
 from src.config import (
     RAW_EYE_TRACKING_DATA_PATH,
     RAW_EYE_TRACKING_FRAME_WIDTH,
     RAW_EYE_TRACKING_FRAME_HEIGHT,
     PROCESSED_EYE_TRACKING_DATA_PATH,
+    PROCESSED_EYE_TRACKING_FILE_NAME,
 )
 
 OUTLIER_VALUES = (3000, 1500)
+MAX_TIME_SINCE_START_SECONDS = 120
+N_HNANOSECONDS_IN_NANOSECOND = 100  # Number of hundred nanoseconds in a nanosecond
+N_NANOSECONDS_IN_SECOND = 1e9  # Number of nanoseconds in a second
+
+# Offset between Windows FileTime epoch (1601-01-01) and Unix epoch (1970-01-01) in hundreds of nanoseconds
+WINDOWS_TO_UNIX_EPOCH_OFFSET_NS = 116444736000000000
 
 
-def __delete_processed_files() -> None:
+def get_raw_data() -> pd.DataFrame:
     """
-    Delete the processed eye tracking data files.
-    """
-    print("⌛ Deleting already processed eye tracking data files...")
-
-    for file_path in Path(PROCESSED_EYE_TRACKING_DATA_PATH).rglob(f"*.csv"):
-        os.remove(file_path)
-
-    print("✅ Already processed eye tracking data files deleted.")
-
-
-def __get_src_file_paths() -> List[str]:
-    """
-    Get the source paths of the raw eye tracking data files.
+    Get raw eye tracking data.
 
     Returns:
-        List[str]: List of the source paths of the raw eye tracking data files
+        pd.DataFrame: The raw eye tracking data.
     """
     # Get valid source file paths
     file_paths = Path(RAW_EYE_TRACKING_DATA_PATH).rglob(
@@ -59,250 +53,214 @@ def __get_src_file_paths() -> List[str]:
     else:
         print(f"➡️  Found {n_files} raw eye tracking data files.")
 
-    return file_paths
+    # Read raw eye tracking data
+    raw_data_list = []
+    for file_path in tqdm(
+        file_paths, total=n_files, desc="⌛ Reading raw eye tracking data"
+    ):
+        raw_file_data = pd.read_csv(file_path, sep=";")
+        raw_data_list.append(raw_file_data)
+
+    raw_data = pd.concat(raw_data_list, axis=0, ignore_index=True)
+
+    return raw_data
 
 
-def __get_dst_file_paths(src_file_paths) -> List[str]:
-    """
-    Get the destination paths of the raw eye tracking data files.
-
-    Args:
-        src_file_paths (List[str]): List of the source paths of the raw eye tracking data files
-
-    Returns:
-        List[str]: List of the destination paths of the raw eye tracking data files
-    """
-    dst_file_paths = []
-    for src_file_path in src_file_paths:
-
-        # Extract global eye tracking data path
-        global_eye_tracking_data_path = src_file_path.split("/raw")[0]
-
-        # Extract experiment number
-        experiment_number_index = find_and_get_next_char_index(
-            src_file_path, "ETM Data EXP"
-        )
-        if experiment_number_index == -1:
-            experiment_number_index = find_and_get_next_char_index(
-                src_file_path, "ETM Data, EXP"
-            )
-        if experiment_number_index == -1:
-            raise ValueError(
-                f"❌ Could not find the experiment number in the path: {src_file_path}."
-            )
-        experiment_number = int(src_file_path[experiment_number_index])
-
-        # Extract session number
-        session_number_index = find_and_get_next_char_index(
-            src_file_path, f"ETM Data EXP{experiment_number}, "
-        )
-        if session_number_index == -1:
-            session_number_index = find_and_get_next_char_index(
-                src_file_path, f"ETM Data, EXP{experiment_number}, "
-            )
-        if session_number_index == -1:
-            raise ValueError(
-                f"❌ Could not find the session number in the path: {src_file_path}."
-            )
-        session_number = int(src_file_path[session_number_index])
-
-        # Extract participant id
-        participant_id = int(src_file_path.split("/")[-1].split("_")[1][1:-1])
-
-        # Extract extra file name data
-        file_name_data_list = (
-            src_file_path.split("/")[-1].replace(".csv", "").split("_")[2:]
-        )
-        file_name_data = "_".join(file_name_data_list)
-
-        # Put in processed folder
-        dst_file_path = global_eye_tracking_data_path
-        dst_file_path += "/processed"
-        dst_file_path += f"/experiment{experiment_number}"
-        dst_file_path += f"/session{session_number}"
-        dst_file_path += f"/participant{participant_id:02d}_{file_name_data}.csv"
-
-        dst_file_paths.append(dst_file_path)
-
-    return dst_file_paths
-
-
-def __process_data(
-    raw_data: pd.DataFrame,
-) -> pd.DataFrame:
+def process_data(data: pd.DataFrame) -> pd.DataFrame:
     """
     Process the raw eye tracking data.
 
     Args:
-        raw_data (pd.DataFrame): The raw eye tracking data
+        data (pd.DataFrame): The raw eye tracking data.
 
     Returns:
-        pd.DataFrame: The processed eye tracking data
+        pd.DataFrame: The processed eye tracking data.
     """
-    raw_data = raw_data.copy()
+    print("⌛ Processing raw eye tracking data.")
+    data = data.copy()
 
     # Delete entries with NaN values
-    raw_data = raw_data.dropna()
+    data = data.dropna()
 
-    # Remove false center gaze points
-    raw_data = raw_data[
-        (raw_data["GazeX"] != OUTLIER_VALUES[0])
-        & (raw_data["GazeY"] != OUTLIER_VALUES[1])
+    # Delete false center gaze points
+    data = data[
+        (data["GazeX"] != OUTLIER_VALUES[0]) & (data["GazeY"] != OUTLIER_VALUES[1])
     ]
 
-    raw_data["GazeX"] = raw_data["GazeX"] / RAW_EYE_TRACKING_FRAME_WIDTH
-    raw_data["GazeY"] = raw_data["GazeY"] / RAW_EYE_TRACKING_FRAME_HEIGHT
+    # Add gaze screen coordinates column and rename gaze pixel coordinates column
+    data["GazeX_sc"] = data["GazeX"] / RAW_EYE_TRACKING_FRAME_WIDTH
+    data["GazeY_sc"] = data["GazeY"] / RAW_EYE_TRACKING_FRAME_HEIGHT
+    data = data.rename(columns={"GazeX": "GazeX_px", "GazeY": "GazeY_px"})
 
     # Get experiment, session and participant ids
-    raw_data["ExperimentId"] = raw_data["Id"] // 1000  # Is the thousands digit
-    raw_data["SessionId"] = raw_data["Id"] % 10  # Is the unit digit
-    raw_data["ParticipantId"] = (
-        raw_data["Id"] % 1000
-    ) // 10  # Is the hundreds and tens digit
+    data["ExperimentId"] = data["Id"] // 1000  # Is the thousands digit
+    data["SessionId"] = data["Id"] % 10  # Is the unit digit
+    data["ParticipantId"] = (data["Id"] % 1000) // 10  # Is the hundreds and tens digit
 
-    # Remove vector gaze information and id
-    raw_data = raw_data.drop(
+    # Delete entries with invalid ids
+    data = data[
+        ((data["ExperimentId"] == 1) | (data["ExperimentId"] == 2))
+        & ((data["SessionId"] == 1) | (data["SessionId"] == 2))
+    ]
+
+    # Change timestamp unit to nanoseconds
+    data["Timestamp"] = data["Timestamp"].astype("int64")
+    data["Timestamp_ns"] = data["Timestamp"] * N_HNANOSECONDS_IN_NANOSECOND
+
+    # Delete entries recorded after a long time
+    data = with_time_since_start_column(data)
+    data = data[
+        data["TimeSinceStart_ns"]
+        <= MAX_TIME_SINCE_START_SECONDS * N_NANOSECONDS_IN_SECOND
+    ]
+    data = data.drop(columns=["TimeSinceStart_ns"])
+
+    # Delete vector gaze information and id
+    data = data.drop(
         columns=[
             "VectorGazeX",
             "VectorGazeY",
             "VectorGazeZ",
             "Id",
             "SequenceSet",
+            "Timestamp",
         ]
     )
 
+    # Convert types
+    data = data.astype(
+        {
+            "ExperimentId": "int",
+            "SessionId": "int",
+            "ParticipantId": "int",
+            "SequenceId": "int",
+            "GazeX_sc": "float32",
+            "GazeY_sc": "float32",
+            "GazeX_px": "float32",
+            "GazeY_px": "float32",
+            "Timestamp_ns": "int64",
+        }
+    )
+
     # Reorder columns
-    raw_data = raw_data[
+    data = data[
         [
             "ExperimentId",
             "SessionId",
             "ParticipantId",
             "SequenceId",
-            "GazeX",
-            "GazeY",
-            "Timestamp",
+            "GazeX_sc",
+            "GazeY_sc",
+            "GazeX_px",
+            "GazeY_px",
+            "Timestamp_ns",
         ]
     ]
 
-    return raw_data
+    print("✅ Eye tracking data processed.")
+
+    return data
 
 
-def __process_files(src_file_paths: List[str], dst_file_paths: List[str]) -> None:
-    """
-    Process the raw eye tracking data files.
+def get_interpolated_data(data: pd.DataFrame) -> pd.DataFrame:
+    data = data.copy()
 
-    Args:
-        src_file_paths (List[str]): List of the source paths of the raw eye tracking data files
-        dst_file_paths (List[str]): List of the destination paths of the raw eye tracking data files
-    """
-    for src_file_path, dst_file_path in tqdm(
-        zip(src_file_paths, dst_file_paths),
-        total=len(src_file_paths),
-        desc="⌛ Processing raw eye tracking data...",
-        unit="file",
+    # The conversion does not give good date, but the time unit is correct
+    data["DateTime"] = pd.to_datetime(data["Timestamp_ns"], unit="ns")
+    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId"])
+    groups = [data.get_group(x) for x in data.groups]
+
+    for i, group in tqdm(
+        enumerate(groups), total=len(groups), desc="⌛ Interpolating eye tracking data"
     ):
-        # Read the raw eye tracking data
-        raw_data = pd.read_csv(src_file_path, sep=";")
+        group = group.copy()
+        group = group.set_index("DateTime")
 
-        # Process the raw eye tracking data
-        processed_data = __process_data(raw_data)
+        # Get group information
+        experiment_id = group["ExperimentId"].iloc[0]
+        session_id = group["SessionId"].iloc[0]
+        participant_id = group["ParticipantId"].iloc[0]
+        sequence_id = group["SequenceId"].iloc[0]
 
-        if processed_data.empty:
-            print(
-                f" ⚠️  No data left after processing file {src_file_path}, skipping..."
-            )
-            continue
+        # Resample and interpolate the data
+        columns_to_interpolate = ["GazeX_sc", "GazeY_sc", "GazeX_px", "GazeY_px"]
+        resampled_group = group[columns_to_interpolate].resample("100ms").mean()
+        interpolated_group = resampled_group.interpolate(method="linear")
+        interpolated_group = interpolated_group.reset_index()
 
-        # Save the processed eye tracking data
-        os.makedirs(os.path.dirname(dst_file_path), exist_ok=True)
-        processed_data.to_csv(dst_file_path, index=False)
+        # Add group information
+        interpolated_group["ExperimentId"] = experiment_id
+        interpolated_group["SessionId"] = session_id
+        interpolated_group["ParticipantId"] = participant_id
+        interpolated_group["SequenceId"] = sequence_id
+        interpolated_group["Timestamp_ns"] = interpolated_group["DateTime"].astype(
+            "int64"
+        )
 
-    print(f"✅ Eye tracking files processed.")
+        groups[i] = interpolated_group
 
+    interpolated_data = pd.concat(groups, axis=0, ignore_index=True)
 
-def __merge_files(participant_number: int, participant_file_paths: List[str]) -> None:
-    """
-    Merge the participant raw eye tracking files.
+    # Reformat data
+    interpolated_data = interpolated_data.drop(columns=["DateTime"])
+    interpolated_data = interpolated_data.astype(
+        {
+            "ExperimentId": "int",
+            "SessionId": "int",
+            "ParticipantId": "int",
+            "SequenceId": "int",
+            "GazeX_sc": "float32",
+            "GazeY_sc": "float32",
+            "GazeX_px": "float32",
+            "GazeY_px": "float32",
+            "Timestamp_ns": "int64",
+        }
+    )
 
-    Args:
-        participant_number (int): The participant number
-        participant_file_paths (List[str]): List of the participant raw eye tracking file paths
-    """
-    if len(participant_file_paths) == 1:
-        return
-
-    # Read raw eye tracking data
-    data_frames = []
-    for participant_file_path in participant_file_paths:
-        data_frames.append(pd.read_csv(participant_file_path))
-
-    # Merge data frames
-    merged_data = pd.concat(data_frames, ignore_index=True)
-
-    # Extract global file path
-    global_file_path = "/".join(participant_file_paths[0].split("/")[:-1])
-
-    # Extract and merge extra file name data
-    file_name_data_list = "_".join(
+    interpolated_data = interpolated_data[
         [
-            "_".join(
-                participant_file_path.split("/")[-1].replace(".csv", "").split("_")[1:]
-            )
-            for participant_file_path in participant_file_paths
+            "ExperimentId",
+            "SessionId",
+            "ParticipantId",
+            "SequenceId",
+            "GazeX_sc",
+            "GazeY_sc",
+            "GazeX_px",
+            "GazeY_px",
+            "Timestamp_ns",
         ]
-    )
+    ]
 
-    # Extract participant id
-    merged_file_path = (
-        f"{global_file_path}/participant{participant_number}_{file_name_data_list}.csv"
-    )
-
-    # Save the merged data
-    merged_data.to_csv(merged_file_path, index=False)
-
-    # Delete unmerged participant files
-    for participant_file_path in participant_file_paths:
-        os.remove(participant_file_path)
-
-
-def __merge_participant_files() -> None:
-    """
-    Merge the participant raw eye tracking files.
-    """
-    print("⌛ Merging participant files...")
-    for experiment_number in [1, 2]:
-        for session_number in [1, 2]:
-            folder_path = f"{PROCESSED_EYE_TRACKING_DATA_PATH}/experiment{experiment_number}/session{session_number}"
-            file_paths = Path(folder_path).rglob(f"*.csv")
-            file_paths = [file_path.resolve().as_posix() for file_path in file_paths]
-
-            # Group files that belong to the same participant
-            participant_files = {}
-            for file_path in file_paths:
-                participant_number = int(
-                    file_path.split("/")[-1].split("_")[0].split("participant")[1]
-                )
-
-                if participant_number not in participant_files:
-                    participant_files[participant_number] = []
-
-                participant_files[participant_number].append(file_path)
-
-            # Merge the files
-            for participant_number, participant_file_paths in participant_files.items():
-                __merge_files(participant_number, participant_file_paths)
-    print("✅ Participant files merged.")
+    return interpolated_data
 
 
 def main() -> None:
     """
     Main function for processing the raw eye tracking data.
     """
-    __delete_processed_files()
-    src_file_paths = __get_src_file_paths()
-    dst_file_paths = __get_dst_file_paths(src_file_paths)
-    __process_files(src_file_paths, dst_file_paths)
-    __merge_participant_files()
+    # Remove old processed eye tracking data file
+    print("➡️  Removing old interpolated eye tracking data file.")
+    data_file_path = (
+        f"{PROCESSED_EYE_TRACKING_DATA_PATH}/{PROCESSED_EYE_TRACKING_FILE_NAME}"
+    )
+    interpolated_data_file_path = f"{PROCESSED_EYE_TRACKING_DATA_PATH}/interpolated_{PROCESSED_EYE_TRACKING_FILE_NAME}"
+    if os.path.exists(data_file_path):
+        os.remove(data_file_path)
+    if os.path.exists(interpolated_data_file_path):
+        os.remove(interpolated_data_file_path)
+
+    raw_data = get_raw_data()
+    processed_data = process_data(raw_data)
+    interpolated_data = get_interpolated_data(processed_data)
+
+    # Save processed eye tracking data
+    os.makedirs(PROCESSED_EYE_TRACKING_DATA_PATH, exist_ok=True)
+    processed_data.to_csv(data_file_path, index=False)
+    os.makedirs(PROCESSED_EYE_TRACKING_DATA_PATH, exist_ok=True)
+    interpolated_data.to_csv(interpolated_data_file_path, index=False)
+    print(
+        f"✅ Saved processed and interpolated eye tracking data to {data_file_path} and {interpolated_data_file_path}."
+    )
 
 
 if __name__ == "__main__":

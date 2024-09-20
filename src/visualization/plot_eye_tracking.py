@@ -8,19 +8,22 @@ import cv2
 import numpy as np
 import pandas as pd
 from typing import List, Tuple
+from sklearn.neighbors import KernelDensity
 
-from src.utils.eye_tracking_data import get_eye_tracking_data
+from src.utils.eye_tracking_data import get_eye_tracking_data, with_time_since_start_column
 from src.config import SETS_PATH
 
-N_HNANOSECONDS_IN_SECONDS = 1e7  # Number of hundred nanoseconds in a second
+N_NANOSECONDS_IN_SECOND = 1e9  # Number of hundred nanoseconds in a second
 END_BACKGROUND_DARK_RATIO = 0.5
+SALIENCY_COLORMAP = cv2.COLORMAP_HOT
 
 def get_grouped_eye_tracking_data(
     experiment_id: int,
     session_id: int,
-    participant_ids: int | None,
+    participant_ids: List[int] | None,
     sequence_id: int,
     fps: int,
+    interpolated: bool,
 ) -> List[pd.DataFrame]:
     """
     Get the eye tracking data grouped by single sequence experiment.
@@ -28,9 +31,10 @@ def get_grouped_eye_tracking_data(
     Args:
         experiment_id (int): The experiment ID.
         session_id (int): The session ID.
-        participant_ids (int | None): The participant IDs.
+        participant_ids (List[int] | None): The participant IDs.
         sequence_id (int): The sequence ID.
         fps (int): The frames per second.
+        interpolated (bool): Whether to return the interpolated data.
 
     Raises:
         ValueError: If no data is found for the provided ids.
@@ -39,7 +43,7 @@ def get_grouped_eye_tracking_data(
         List[pd.DataFrame]: The eye tracking data grouped by single sequence experiment.
     """
     print(
-        f"⌛ Getting eye tracking data of {"all" if participant_ids is None else len(participant_ids)} participant(s) for experiment {experiment_id}, session {session_id}, and sequence {sequence_id}..."
+        f"⌛ Getting eye tracking data of {'all' if participant_ids is None else len(participant_ids)} participant(s) for experiment {experiment_id}, session {session_id}, and sequence {sequence_id}..."
     )
 
     # Get data and group by single sequence experiment
@@ -48,7 +52,9 @@ def get_grouped_eye_tracking_data(
         session_id=session_id,
         participant_ids=participant_ids,
         sequence_ids=[sequence_id],
+        interpolated=interpolated,
     )
+    data = with_time_since_start_column(data)
     data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId"])
     groups = [data.get_group(group) for group in data.groups]
 
@@ -57,14 +63,11 @@ def get_grouped_eye_tracking_data(
             f"❌ No data found for experiment {experiment_id}, session {session_id}, and participant(s) {participant_ids}."
         )
 
-    # Sort each sequence by timestamp and compute time difference between consecutive frames
+    # Add frame number
     for i, group in enumerate(groups):
         group = group.copy()
-        group = group.sort_values("Timestamp")
-        group["TimeDiff"] = group["Timestamp"].diff().fillna(0)
-        group["FrameDiff"] = group["TimeDiff"] / N_HNANOSECONDS_IN_SECONDS * fps
-        group["FrameNumber"] = group["FrameDiff"].cumsum().astype(int)
-        group.drop(columns=["TimeDiff", "FrameDiff"], inplace=True)
+        group["FrameNumber"] = group["TimeSinceStart_ns"] / N_NANOSECONDS_IN_SECOND * fps
+        group["FrameNumber"] = group["FrameNumber"].astype(int)
         groups[i] = group
 
     print("✅ Eye tracking data loaded.")
@@ -103,6 +106,7 @@ def get_background(
         background_fps = None
     # Other sessions have videos as background
     else:
+        # Get video
         if experiment_id == 1 and session_id == 2:
             background_file_path += f"/videos/scene{sequence_id}.mp4"
         elif experiment_id == 2 and session_id == 1:
@@ -125,29 +129,6 @@ def get_background(
     print("✅ Background loaded.")
 
     return background, background_fps
-
-
-def get_max_frame(
-    groups: List[pd.DataFrame],
-    background: np.ndarray | List[np.ndarray],
-    end_at_video_end: bool,
-) -> int:
-    """
-    Get the maximum frame number.
-    
-    Args:
-        groups (List[pd.DataFrame]): The grouped eye tracking data.
-        background (np.ndarray | List[np.ndarray]): The background image or video.
-        
-    Returns:
-        int: The maximum frame number.
-    """
-    if end_at_video_end and isinstance(background, List):
-        max_frame = len(background)
-    else:
-        max_frame = max([group["FrameNumber"].max() for group in groups])
-
-    return max_frame
 
 
 def get_background_frame(
@@ -173,6 +154,62 @@ def get_background_frame(
         curr_background_frame = min(curr_background_frame, len(background) - 1)
         frame = background[curr_background_frame].copy()
         frame = (frame * darken_ratio).astype(np.uint8)
+
+    return frame
+
+
+def draw_gaze_saliency(
+    coordinates: List[Tuple[float, float]],
+    frame: np.ndarray,
+    frame_width: int,
+    frame_height: int,
+    saliency_width: int,
+    saliency_height: int,
+    kde_bandwidth: float
+) -> np.ndarray:
+    """
+    Draw gaze saliency on frame.
+
+    Args:
+        coordinates (List[Tuple[float, float]]): The gaze coordinates.
+        frame (np.ndarray): The frame.
+        frame_width (int): The frame width.
+        frame_height (int): The frame height.
+        saliency_width (int): The saliency map width.
+        saliency_height (int): The saliency map height.
+        kde_bandwidth (float): The bandwidth for the Kernel Density Estimation.
+
+    Returns:
+        np.ndarray: The frame with gaze saliency.
+    """
+    # Return frame if no gaze coordinates
+    if not coordinates:
+        return frame
+    
+    frame = frame.copy()
+    
+    # Rescale gaze coordinates to frame size
+    coordinates = np.array([
+        [int(coord[0] * saliency_width), int(coord[1] * saliency_height)]
+        for coord in coordinates
+    ])
+
+    # Fit Kernel Density Estimation to gaze coordinates
+    x_grid, y_grid = np.meshgrid(
+        np.linspace(0, saliency_width - 1, saliency_width),
+        np.linspace(0, saliency_height - 1, saliency_height),
+    )
+    grid_sample = np.vstack([x_grid.ravel(), y_grid.ravel()]).T
+    kde = KernelDensity(bandwidth=kde_bandwidth, kernel="gaussian").fit(coordinates)
+    kde.fit(coordinates)
+    kde_scores = kde.score_samples(grid_sample)
+    kde_density = np.exp(kde_scores).reshape(saliency_height, saliency_width)
+    kde_density = cv2.normalize(kde_density, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+    # Apply colormap to estimated density, resize saliency map and mix with frame
+    saliency_map = cv2.applyColorMap(kde_density, SALIENCY_COLORMAP)
+    saliency_map = cv2.resize(saliency_map, (frame_width, frame_height))
+    frame = cv2.addWeighted(frame, 0.5, saliency_map, 0.5, 0)
 
     return frame
 
