@@ -184,7 +184,7 @@ def get_interpolated_data(data: pd.DataFrame) -> pd.DataFrame:
 
         # Resample and interpolate the data
         columns_to_interpolate = ["GazeX_sc", "GazeY_sc", "GazeX_px", "GazeY_px"]
-        resampled_group = group[columns_to_interpolate].resample("100ms").mean()
+        resampled_group = group[columns_to_interpolate].resample("50ms").mean()
         interpolated_group = resampled_group.interpolate(method="linear")
         interpolated_group = interpolated_group.reset_index()
 
