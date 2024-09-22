@@ -26,8 +26,9 @@ OUTLIER_VALUES = (3000, 1500)
 MAX_TIME_SINCE_START_SECONDS = 120
 N_HNANOSECONDS_IN_NANOSECOND = 100  # Number of hundred nanoseconds in a nanosecond
 N_NANOSECONDS_IN_SECOND = 1e9  # Number of nanoseconds in a second
-DISPERSION_THRESHOLD = 1.0
-DURATION_THRESHOLD = 100.0
+
+DISPERSION_THRESHOLD_PX = 50.0
+DURATION_THRESHOLD_NS = 100.0 * 1e6  # 100 ms in nanoseconds
 
 # Offset between Windows FileTime epoch (1601-01-01) and Unix epoch (1970-01-01) in hundreds of nanoseconds
 WINDOWS_TO_UNIX_EPOCH_OFFSET_NS = 116444736000000000
@@ -266,39 +267,45 @@ def get_fixation_data_from_group(
     """
     fixation_data = []
     start_index = 0
-    for i in range(1, len(group)):
-        is_fixation = group["isFixation"].iloc[i]
-        is_recent = (
-            group["TimeSinceStart_ns"].iloc[i]
-            - group["TimeSinceStart_ns"].iloc[start_index]
-            <= duration_threshold_ns
-        )
-        if is_fixation and is_recent:
-            continue
-
-        # Making sure that the fixation is not too short
-        if i - start_index <= 1:
-            start_index = i
-            continue
-
+    is_fixation = False
+    for curr_index in range(len(group)):
+        # Set window to cover the duration threshold
         start_timestamp = group["Timestamp_ns"].iloc[start_index]
-        end_timestamp = group["Timestamp_ns"].iloc[i - 1]
+        end_timestamp = group["Timestamp_ns"].iloc[curr_index]
         fixation_duration = end_timestamp - start_timestamp
-        fixation_data.append(
-            {
-                "ExperimentId": group["ExperimentId"].iloc[start_index],
-                "SessionId": group["SessionId"].iloc[start_index],
-                "ParticipantId": group["ParticipantId"].iloc[start_index],
-                "SequenceId": group["SequenceId"].iloc[start_index],
-                "FixationX_sc": group["GazeX_sc"].iloc[start_index:i].mean(),
-                "FixationY_sc": group["GazeY_sc"].iloc[start_index:i].mean(),
-                "FixationX_px": group["GazeX_px"].iloc[start_index:i].mean(),
-                "FixationY_px": group["GazeY_px"].iloc[start_index:i].mean(),
-                "StartTimestamp_ns": start_timestamp,
-                "EndTimestamp_ns": end_timestamp,
-                "Duration_ns": fixation_duration,
-            }
+        if fixation_duration < duration_threshold_ns:
+            continue
+
+        dispersion = (
+            group["GazeX_px"].iloc[start_index:curr_index].max()
+            - group["GazeX_px"].iloc[start_index:curr_index].min()
+            + group["GazeY_px"].iloc[start_index:curr_index].max()
+            - group["GazeY_px"].iloc[start_index:curr_index].min()
         )
+        # Define the window as a fixation if it does not exceed the dispersion threshold, and increase the size of the window
+        if dispersion < dispersion_threshold_px and curr_index < len(group) - 1:
+            is_fixation = True
+            continue
+        # If the threshold is exceeded, save the fixation point and start over with next points in the time-series
+        else:
+            if is_fixation:
+                fixation_data.append(
+                    {
+                        "ExperimentId": group["ExperimentId"].iloc[start_index],
+                        "SessionId": group["SessionId"].iloc[start_index],
+                        "ParticipantId": group["ParticipantId"].iloc[start_index],
+                        "SequenceId": group["SequenceId"].iloc[start_index],
+                        "FixationX_sc": group["GazeX_sc"].iloc[start_index:curr_index].mean(),
+                        "FixationY_sc": group["GazeY_sc"].iloc[start_index:curr_index].mean(),
+                        "FixationX_px": group["GazeX_px"].iloc[start_index:curr_index].mean(),
+                        "FixationY_px": group["GazeY_px"].iloc[start_index:curr_index].mean(),
+                        "StartTimestamp_ns": start_timestamp,
+                        "EndTimestamp_ns": end_timestamp,
+                        "Duration_ns": fixation_duration,
+                    }
+                )
+            start_index = curr_index
+            is_fixation = False
 
     return fixation_data
 
@@ -319,11 +326,8 @@ def get_fixation_data(
     Returns:
         pd.DataFrame: The fixation data.
     """
-    # Get fixation flag from dispersion threshold and group the data by experiment
+    # Group the data by sequence
     data = data.copy()
-    data = with_distance_since_last_column(data)
-    data["isFixation"] = data["DistanceSinceLast_px"] <= dispersion_threshold_px
-
     data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId"])
     groups = [data.get_group(group) for group in data.groups]
 
@@ -384,14 +388,14 @@ def parse_arguments() -> argparse.Namespace:
         "--dispersion-threshold",
         "-dit",
         type=float,
-        default=DISPERSION_THRESHOLD,
+        default=DISPERSION_THRESHOLD_PX,
         help="The dispersion threshold for fixation detection in pixels.",
     )
     parser.add_argument(
         "--duration-threshold",
         "-dut",
         type=float,
-        default=DURATION_THRESHOLD,
+        default=DURATION_THRESHOLD_NS,
         help="The duration threshold for fixation detection in nanoseconds.",
     )
 
