@@ -12,6 +12,8 @@ from src.config import (
     PROCESSED_EYE_TRACKING_FILE_NAME,
 )
 
+N_NANOSECONDS_IN_SECOND = 1e9  # Number of nanoseconds in a second
+
 
 def get_eye_tracking_data(
     experiment_id: int | None = None,
@@ -86,5 +88,82 @@ def with_time_since_start_column(data: pd.DataFrame) -> pd.DataFrame:
         group = group.drop(columns=["TimeDiff_ns"])
         groups[i] = group
     data = pd.concat(groups)
+
+    return data
+
+
+def with_time_since_last_column(
+    data: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Add a column with the time since the previous gaze point in nanoseconds.
+
+    Args:
+        data (pd.DataFrame): The eye tracking data.
+
+    Returns:
+        pd.DataFrame: The eye tracking data with the time since last gaze point column.
+    """
+    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId"])
+    groups = [data.get_group(group) for group in data.groups]
+
+    for i, group in enumerate(groups):
+        group = group.copy()
+        group = group.sort_values("Timestamp_ns")
+        time_since_last = group["Timestamp_ns"].diff().fillna(0)
+        group["TimeSinceLast_ns"] = time_since_last
+        groups[i] = group
+    data = pd.concat(groups)
+
+    return data
+
+
+def with_distance_since_last_column(
+    data: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Add a column with the distance since the previous gaze point in pixels.
+
+    Args:
+        data (pd.DataFrame): The eye tracking data.
+
+    Returns:
+        pd.DataFrame: The eye tracking data with the distance since last gaze point column.
+    """
+    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId"])
+    groups = [data.get_group(group) for group in data.groups]
+
+    for i, group in enumerate(groups):
+        group = group.copy()
+        group = group.sort_values("Timestamp_ns")
+        gaze_x_diff = group["GazeX_px"].diff().fillna(0)
+        gaze_y_diff = group["GazeY_px"].diff().fillna(0)
+        distance_since_last = np.sqrt(gaze_x_diff**2 + gaze_y_diff**2)
+        group["DistanceSinceLast_px"] = distance_since_last
+        groups[i] = group
+    data = pd.concat(groups)
+
+    return data
+
+
+def with_speed_since_last_column(
+    data: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Add a column with the speed between the current and the previous gaze point in pixels.
+
+    Args:
+        data (pd.DataFrame): The eye tracking data.
+
+    Returns:
+        pd.DataFrame: The eye tracking data with the speed since last gaze point column.
+    """
+    # Group the data by experiment, session, participant, and sequence
+    data = data.copy()
+    data = with_time_since_last_column(data)
+    data = with_distance_since_last_column(data)
+    data["SpeedSinceLast_pxs"] = data["DistanceSinceLast_px"] / (
+        data["TimeSinceLast_ns"] / N_NANOSECONDS_IN_SECOND
+    )
 
     return data
