@@ -4,6 +4,7 @@ from pathlib import Path
 GLOBAL_DIR = Path(__file__).parent / ".." / ".."
 sys.path.append(str(GLOBAL_DIR))
 
+import numpy as np
 import pandas as pd
 from typing import List
 
@@ -21,6 +22,7 @@ def get_eye_tracking_data(
     participant_ids: List[int] | None = None,
     sequence_ids: List[int] | None = None,
     interpolated: bool = False,
+    fixation: bool = False,
 ) -> pd.DataFrame:
     """
     Get eye tracking data for a specific experiment, session, and participant. If no id is provided, all data is returned.
@@ -30,18 +32,23 @@ def get_eye_tracking_data(
         session_id (int | None, optional): The session id. Defaults to None.
         participant_ids (List[int] | None, optional): The participant id. Defaults to None.
         interpolated (bool, optional): Whether to return the interpolated data. Defaults to False.
+        fixation (bool, optional): Whether to return the fixation data. Defaults to False.
 
     Raises:
         ValueError: If the experiment id is not 1 or 2.
         ValueError: If the session id is not 1 or 2.
+        ValueError: If both interpolated and fixation data are requested.
         ValueError: If no data is found for the provided ids.
     """
     if experiment_id is not None and experiment_id not in [1, 2]:
         raise ValueError(f"❌ Invalid experiment id: {experiment_id}, must be 1 or 2.")
     if session_id is not None and session_id not in [1, 2]:
         raise ValueError(f"❌ Invalid session id: {session_id}, must be 1 or 2.")
+    if interpolated and fixation:
+        raise ValueError("❌ Either interpolated or fixation data can be returned, not both.")
 
-    data_file_path = f"{PROCESSED_EYE_TRACKING_DATA_PATH}/{'interpolated_' if interpolated else ''}{PROCESSED_EYE_TRACKING_FILE_NAME}"
+    data_file_prefix = "interpolated_" if interpolated else "fixation_" if fixation else ""
+    data_file_path = f"{PROCESSED_EYE_TRACKING_DATA_PATH}/{data_file_prefix}{PROCESSED_EYE_TRACKING_FILE_NAME}"
     data = pd.read_csv(data_file_path)
 
     if experiment_id is not None:
