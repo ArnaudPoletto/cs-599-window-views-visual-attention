@@ -88,9 +88,10 @@ def with_time_since_start_column(data: pd.DataFrame) -> pd.DataFrame:
     groups = [grouped_data.get_group(group) for group in grouped_data.groups]
 
     for i, group in enumerate(groups):
-        start_time = group["Timestamp_ns"].min()
+        timestamp_column = "Timestamp_ns" if "Timestamp_ns" in group.columns else "StartTimestamp_ns"
+        start_time = group[timestamp_column].min()
         group = group.copy()
-        group["TimeSinceStart_ns"] = group["Timestamp_ns"] - start_time
+        group["TimeSinceStart_ns"] = group[timestamp_column] - start_time
         groups[i] = group
     data = pd.concat(groups)
 
@@ -198,8 +199,8 @@ def with_distance_since_last_column(
     for i, group in enumerate(groups):
         group = group.copy()
         group = group.sort_values("Timestamp_ns")
-        gaze_x_diff = group["GazeX_px"].diff().fillna(0)
-        gaze_y_diff = group["GazeY_px"].diff().fillna(0)
+        gaze_x_diff = group["X_px"].diff().fillna(0)
+        gaze_y_diff = group["Y_px"].diff().fillna(0)
         distance_since_last = np.sqrt(gaze_x_diff**2 + gaze_y_diff**2)
         group["DistanceSinceLast_px"] = distance_since_last
         groups[i] = group
