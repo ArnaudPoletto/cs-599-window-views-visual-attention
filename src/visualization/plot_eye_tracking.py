@@ -10,14 +10,19 @@ import pandas as pd
 from typing import List, Tuple
 from sklearn.neighbors import KernelDensity
 
-from src.utils.eye_tracking_data import get_eye_tracking_data, with_time_since_start_column
+from src.utils.eye_tracking_data import (
+    get_eye_tracking_data,
+    with_time_since_start_column,
+    with_time_since_start_end_column,
+)
 from src.config import SETS_PATH
 
 N_NANOSECONDS_IN_SECOND = 1e9  # Number of hundred nanoseconds in a second
 END_BACKGROUND_DARK_RATIO = 0.5
 SALIENCY_COLORMAP = cv2.COLORMAP_HOT
 
-def get_grouped_eye_tracking_data(
+
+def get_grouped_processed_data(
     experiment_id: int,
     session_id: int,
     participant_ids: List[int] | None,
@@ -66,11 +71,55 @@ def get_grouped_eye_tracking_data(
     # Add frame number
     for i, group in enumerate(groups):
         group = group.copy()
-        group["FrameNumber"] = group["TimeSinceStart_ns"] / N_NANOSECONDS_IN_SECOND * fps
+        group["FrameNumber"] = (
+            group["TimeSinceStart_ns"] / N_NANOSECONDS_IN_SECOND * fps
+        )
         group["FrameNumber"] = group["FrameNumber"].astype(int)
         groups[i] = group
 
-    print("✅ Eye tracking data loaded.")
+    print("✅ Processed data loaded.")
+
+    return groups
+
+
+def get_grouped_fixation_data(
+    experiment_id: int,
+    session_id: int,
+    participant_ids: List[int] | None,
+    sequence_id: int,
+    fps: int,
+) -> List[pd.DataFrame]:
+    # Get data and group by single sequence experiment
+    data = get_eye_tracking_data(
+        experiment_id=experiment_id,
+        session_id=session_id,
+        participant_ids=participant_ids,
+        sequence_ids=[sequence_id],
+        fixation=True,
+    )
+    data = with_time_since_start_end_column(data)
+    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId"])
+    groups = [data.get_group(group) for group in data.groups]
+
+    if not groups:
+        raise ValueError(
+            f"❌ No data found for experiment {experiment_id}, session {session_id}, and participant(s) {participant_ids}."
+        )
+    
+    # Add start and end frame numbers
+    for i, group in enumerate(groups):
+        group = group.copy()
+        group["StartFrameNumber"] = (
+            group["StartTimeSinceStart_ns"] / N_NANOSECONDS_IN_SECOND * fps
+        )
+        group["StartFrameNumber"] = group["StartFrameNumber"].astype(int)
+        group["EndFrameNumber"] = (
+            group["EndTimeSinceStart_ns"] / N_NANOSECONDS_IN_SECOND * fps
+        )
+        group["EndFrameNumber"] = group["EndFrameNumber"].astype(int)
+        groups[i] = group
+
+    print("✅ Fixation data loaded.")
 
     return groups
 
@@ -132,14 +181,14 @@ def get_background(
 
 
 def get_background_frame(
-        background: np.ndarray | List[np.ndarray],
-        curr_frame: int,
-        background_fps: float | None,
-        fps: int,
-    ) -> np.ndarray:
+    background: np.ndarray | List[np.ndarray],
+    curr_frame: int,
+    background_fps: float | None,
+    fps: int,
+) -> np.ndarray:
     """
     Get background frame for the given frame number.
-    
+
     Args:
         background (np.ndarray | List[np.ndarray]): The background image or video.
         curr_frame (int): The current frame number.
@@ -150,7 +199,9 @@ def get_background_frame(
         frame = background.copy()
     else:
         curr_background_frame = int(curr_frame * background_fps / fps)
-        darken_ratio = 1 if curr_background_frame < len(background) else END_BACKGROUND_DARK_RATIO
+        darken_ratio = (
+            1 if curr_background_frame < len(background) else END_BACKGROUND_DARK_RATIO
+        )
         curr_background_frame = min(curr_background_frame, len(background) - 1)
         frame = background[curr_background_frame].copy()
         frame = (frame * darken_ratio).astype(np.uint8)
@@ -165,7 +216,7 @@ def draw_gaze_saliency(
     frame_height: int,
     saliency_width: int,
     saliency_height: int,
-    kde_bandwidth: float
+    kde_bandwidth: float,
 ) -> np.ndarray:
     """
     Draw gaze saliency on frame.
@@ -185,14 +236,16 @@ def draw_gaze_saliency(
     # Return frame if no gaze coordinates
     if not coordinates:
         return frame
-    
+
     frame = frame.copy()
-    
+
     # Rescale gaze coordinates to frame size
-    coordinates = np.array([
-        [int(coord[0] * saliency_width), int(coord[1] * saliency_height)]
-        for coord in coordinates
-    ])
+    coordinates = np.array(
+        [
+            [int(coord[0] * saliency_width), int(coord[1] * saliency_height)]
+            for coord in coordinates
+        ]
+    )
 
     # Fit Kernel Density Estimation to gaze coordinates
     x_grid, y_grid = np.meshgrid(
@@ -204,10 +257,14 @@ def draw_gaze_saliency(
     kde.fit(coordinates)
     kde_scores = kde.score_samples(grid_sample)
     kde_density = np.exp(kde_scores).reshape(saliency_height, saliency_width)
-    kde_density = cv2.normalize(kde_density, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-
+    kde_density = cv2.normalize(kde_density, None, 0, 255, cv2.NORM_MINMAX).astype(
+        np.uint8
+    )
     # Apply colormap to estimated density, resize saliency map and mix with frame
-    saliency_map = cv2.applyColorMap(kde_density, SALIENCY_COLORMAP)
+    if np.unique(kde_density).size == 1:
+        saliency_map = np.zeros((saliency_height, saliency_width, 3), dtype=np.uint8)
+    else:
+        saliency_map = cv2.applyColorMap(kde_density, SALIENCY_COLORMAP)
     saliency_map = cv2.resize(saliency_map, (frame_width, frame_height))
     frame = cv2.addWeighted(frame, 0.5, saliency_map, 0.5, 0)
 

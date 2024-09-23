@@ -11,7 +11,8 @@ from tqdm import tqdm
 from typing import List, Tuple
 
 from src.visualization.plot_eye_tracking import (
-    get_grouped_eye_tracking_data,
+    get_grouped_processed_data,
+    get_grouped_fixation_data,
     get_background,
     get_background_frame,
     draw_gaze_saliency,
@@ -32,6 +33,7 @@ def update_group_coordinates(
     curr_frame: int,
     max_frame: int,
     group_coordinates: List[Tuple[float, float]],
+    use_fixations: bool,
 ) -> Tuple[List[Tuple[float, float]], List[int]]:
     """
     Get the current gaze coordinates.
@@ -42,17 +44,24 @@ def update_group_coordinates(
         curr_frame (int): The current frame.
         max_frame (int): The maximum frame.
         coordinates (List[Tuple[float, float]]): The current gaze coordinates.
+        use_fixations (bool): Use fixations instead of gaze points.
         
     Returns:
         List[Tuple[float, float]]: The current gaze coordinates.
     """
     for i, group in enumerate(groups):
+        # For fixations, always get the current group coordinates
+        if use_fixations:
+            curr_group_coordinates = group[(group["StartFrameNumber"] <= curr_frame) & (curr_frame <= group["EndFrameNumber"])][["X_sc", "Y_sc"]].values
+            group_coordinates[i] = curr_group_coordinates
+            continue
+
+        # For gaze points, update the current group coordinates if the current frame is the same as the next frame
         next_frame = next_frames[i]
         if curr_frame == next_frame:
             # Update current gaze coordinates
-            curr_group_coordinates = group[group["FrameNumber"] == curr_frame][["GazeX", "GazeY"]].values
-            if curr_group_coordinates.size > 0:
-                group_coordinates[i] = curr_group_coordinates
+            curr_group_coordinates = group[group["FrameNumber"] == curr_frame][["X_sc", "Y_sc"]].values
+            group_coordinates[i] = curr_group_coordinates
 
             # Update next frame
             next_frame = group[group["FrameNumber"] > curr_frame]["FrameNumber"]
@@ -78,7 +87,8 @@ def visualize_gaze_saliency_live(
     fps: int,
     saliency_resolution_ratio: float,
     kde_bandwidth: float,
-    end_at_video_end: bool,
+    use_fixations: bool,
+    use_interpolated: bool = False,
 ) -> None:
     """
     Visualize gaze saliency for the given experiment, session, participant(s), and sequence.
@@ -94,16 +104,27 @@ def visualize_gaze_saliency_live(
         fps (int): The frames per second.
         saliency_resolution_ratio (float): The saliency resolution ratio.
         kde_bandwidth (float): The bandwidth for the Kernel Density Estimation.
-        end_at_video_end (bool): Whether to end gaze visualization at the end of the video.
+        use_fixations (bool): Use fixations instead of gaze points.
+        use_interpolated (bool): Whether to use interpolated data.
     """
     # Get eye tracking data
-    groups = get_grouped_eye_tracking_data(
-        experiment_id=experiment_id,
-        session_id=session_id,
-        participant_ids=participant_ids,
-        sequence_id=sequence_id,
-        fps=fps,
-    )
+    if use_fixations:
+        groups = get_grouped_fixation_data(
+            experiment_id=experiment_id,
+            session_id=session_id,
+            participant_ids=participant_ids,
+            sequence_id=sequence_id,
+            fps=fps,
+        )
+    else:
+        groups = get_grouped_processed_data(
+            experiment_id=experiment_id,
+            session_id=session_id,
+            participant_ids=participant_ids,
+            sequence_id=sequence_id,
+            fps=fps,
+            interpolated=use_interpolated,
+        )
 
     # Get background image or video
     background, background_fps = get_background(
@@ -119,8 +140,12 @@ def visualize_gaze_saliency_live(
     out = cv2.VideoWriter(output_file_path, fourcc, fps, (frame_width, frame_height))
 
     curr_frame = 0
-    next_frames = [group["FrameNumber"].iloc[0] for group in groups]
-    max_frame = max([group["FrameNumber"].max() for group in groups])
+    if use_fixations:
+        next_frames = None # Not used for fixations
+        max_frame = max([group["EndFrameNumber"].max() for group in groups])
+    else:
+        next_frames = [group["FrameNumber"].iloc[0] for group in groups]
+        max_frame = max([group["FrameNumber"].max() for group in groups])
     group_coordinates = [[] for _ in groups]
     bar = tqdm(total=max_frame, desc="⌛ Generating gaze video...", unit="frames")
     while curr_frame < max_frame:
@@ -140,6 +165,7 @@ def visualize_gaze_saliency_live(
             curr_frame=curr_frame,
             max_frame=max_frame,
             group_coordinates=group_coordinates,
+            use_fixations=use_fixations,
         )
 
         # Draw gaze coordinates and information on frame
@@ -170,10 +196,7 @@ def visualize_gaze_saliency_live(
         curr_frame += 1
         bar.update(1)
 
-    if end_at_video_end and isinstance(background, List):
-        print("✅ Live saliency plot generated, ending at video end.")
-    else:
-        print("✅ Live saliency plot generated, ending at eye tracking data end.")
+    print("✅ Live saliency plot generated.")
 
     out.release()
     cv2.destroyAllWindows()
@@ -182,7 +205,7 @@ def visualize_gaze_saliency_live(
 
 def parse_arguments() -> argparse.Namespace:
     """
-    Parse the command line arguments.
+    Parse command line arguments.
     
     Returns:
         argparse.Namespace: The command line arguments.
@@ -259,9 +282,16 @@ def parse_arguments() -> argparse.Namespace:
         help="The bandwidth for the Kernel Density Estimation.",
     )
     parser.add_argument(
-        "--end-at-video-end",
+        "--use-fixations",
+        "-f",
         action="store_true",
-        help="End gaze visualization at the end of the video.",
+        help="Use fixations instead of gaze points.",
+    )
+    parser.add_argument(
+        "--use-interpolated",
+        "-i",
+        action="store_true",
+        help="Whether to use interpolated data.",
     )
 
     return parser.parse_args()
@@ -281,7 +311,8 @@ def main() -> None:
     fps = args.fps
     saliency_resolution_ratio = args.saliency_resolution_ratio
     kde_bandwidth = args.kde_bandwidth
-    end_at_video_end = args.end_at_video_end
+    use_fixations = args.use_fixations
+    use_interpolated = args.use_interpolated
 
     visualize_gaze_saliency_live(
         experiment_id=experiment_id,
@@ -294,7 +325,8 @@ def main() -> None:
         fps=fps,
         saliency_resolution_ratio=saliency_resolution_ratio,
         kde_bandwidth=kde_bandwidth,
-        end_at_video_end=end_at_video_end,
+        use_fixations=use_fixations,
+        use_interpolated=use_interpolated,
     )
 
 if __name__ == "__main__":

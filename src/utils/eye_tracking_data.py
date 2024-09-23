@@ -88,16 +88,41 @@ def with_time_since_start_column(data: pd.DataFrame) -> pd.DataFrame:
     groups = [grouped_data.get_group(group) for group in grouped_data.groups]
 
     for i, group in enumerate(groups):
+        start_time = group["Timestamp_ns"].min()
         group = group.copy()
-        group = group.sort_values("Timestamp_ns")
-        group["TimeDiff_ns"] = group["Timestamp_ns"].diff().fillna(0)
-        group["TimeSinceStart_ns"] = group["TimeDiff_ns"].cumsum()
-        group = group.drop(columns=["TimeDiff_ns"])
+        group["TimeSinceStart_ns"] = group["Timestamp_ns"] - start_time
         groups[i] = group
     data = pd.concat(groups)
 
     return data
 
+
+def with_time_since_start_end_column(data: pd.DataFrame) -> pd.DataFrame:
+    if "StartTimeSinceStart_ns" in data.columns and "EndTimeSinceStart_ns" in data.columns:
+        print(" ⚠️  StartTimeSinceStart_ns and EndTimeSinceStart_ns columns already exist in the data, skipping...")
+        return data
+    
+    if data.empty:
+        print(" ⚠️  No data provided, skipping...")
+        data["StartTimeSinceStart_ns"] = 0
+        data["EndTimeSinceStart_ns"] = 0
+        return data
+    
+    grouped_data = data.groupby(
+        ["ExperimentId", "SessionId", "ParticipantId", "SequenceId"]
+    )
+    groups = [grouped_data.get_group(group) for group in grouped_data.groups]
+
+    for i, group in enumerate(groups):
+        group = group.copy()
+
+        start_time = group["StartTimestamp_ns"].min()
+        group["StartTimeSinceStart_ns"] = group["StartTimestamp_ns"] - start_time
+        group["EndTimeSinceStart_ns"] = group["EndTimestamp_ns"] - start_time
+        groups[i] = group
+    data = pd.concat(groups)
+
+    return data
 
 def with_time_since_last_column(
     data: pd.DataFrame,

@@ -12,7 +12,6 @@ from typing import Any, Dict, List
 
 from src.utils.eye_tracking_data import (
     with_time_since_start_column,
-    with_distance_since_last_column,
 )
 from src.config import (
     RAW_EYE_TRACKING_DATA_PATH,
@@ -24,22 +23,19 @@ from src.config import (
 
 OUTLIER_VALUES = (3000, 1500)
 MAX_TIME_SINCE_START_SECONDS = 120
-N_HNANOSECONDS_IN_NANOSECOND = 100  # Number of hundred nanoseconds in a nanosecond
-N_NANOSECONDS_IN_SECOND = 1e9  # Number of nanoseconds in a second
-
+RESAMPLING_RATE = "50ms"
 DISPERSION_THRESHOLD_PX = 50.0
 DURATION_THRESHOLD_NS = 100.0 * 1e6  # 100 ms in nanoseconds
-
-# Offset between Windows FileTime epoch (1601-01-01) and Unix epoch (1970-01-01) in hundreds of nanoseconds
-WINDOWS_TO_UNIX_EPOCH_OFFSET_NS = 116444736000000000
+N_HNANOSECONDS_IN_NANOSECOND = 100  # Number of hundred nanoseconds in a nanosecond
+N_NANOSECONDS_IN_SECOND = 1e9  # Number of nanoseconds in a second
 
 
 def get_raw_data() -> pd.DataFrame:
     """
-    Get raw eye tracking data.
+    Get raw gaze data.
 
     Returns:
-        pd.DataFrame: The raw eye tracking data.
+        pd.DataFrame: The raw gaze data.
     """
     # Get valid source file paths
     file_paths = Path(RAW_EYE_TRACKING_DATA_PATH).rglob(
@@ -54,18 +50,16 @@ def get_raw_data() -> pd.DataFrame:
     ignored_files = set(all_file_paths) - set(file_paths)
     if len(ignored_files) > 0:
         print(
-            f"➡️  Found {n_files} raw eye tracking data files, ignoring the following {len(ignored_files)} file(s):"
+            f"➡️  Found {n_files} raw gaze data files, ignoring the following {len(ignored_files)} file(s):"
         )
         for ignored_file in ignored_files:
             print(f"\t - {ignored_file}")
     else:
-        print(f"➡️  Found {n_files} raw eye tracking data files.")
+        print(f"➡️  Found {n_files} raw gaze data files.")
 
-    # Read raw eye tracking data
+    # Read raw gaze data
     raw_data_list = []
-    for file_path in tqdm(
-        file_paths, total=n_files, desc="⌛ Reading raw eye tracking data"
-    ):
+    for file_path in tqdm(file_paths, total=n_files, desc="⌛ Reading raw gaze data"):
         raw_file_data = pd.read_csv(file_path, sep=";")
         raw_data_list.append(raw_file_data)
 
@@ -76,15 +70,15 @@ def get_raw_data() -> pd.DataFrame:
 
 def process_data(data: pd.DataFrame) -> pd.DataFrame:
     """
-    Process the raw eye tracking data.
+    Process raw gaze data.
 
     Args:
-        data (pd.DataFrame): The raw eye tracking data.
+        data (pd.DataFrame): The raw gaze data.
 
     Returns:
-        pd.DataFrame: The processed eye tracking data.
+        pd.DataFrame: The processed gaze data.
     """
-    print("⌛ Processing raw eye tracking data.")
+    print("⌛ Processing raw gaze data.")
     data = data.copy()
 
     # Delete entries with NaN values
@@ -96,9 +90,9 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
     ]
 
     # Add gaze screen coordinates column and rename gaze pixel coordinates column
-    data["GazeX_sc"] = data["GazeX"] / RAW_EYE_TRACKING_FRAME_WIDTH
-    data["GazeY_sc"] = data["GazeY"] / RAW_EYE_TRACKING_FRAME_HEIGHT
-    data = data.rename(columns={"GazeX": "GazeX_px", "GazeY": "GazeY_px"})
+    data["X_sc"] = data["GazeX"] / RAW_EYE_TRACKING_FRAME_WIDTH
+    data["Y_sc"] = data["GazeY"] / RAW_EYE_TRACKING_FRAME_HEIGHT
+    data = data.rename(columns={"GazeX": "X_px", "GazeY": "Y_px"})
 
     # Get experiment, session and participant ids
     data["ExperimentId"] = data["Id"] // 1000  # Is the thousands digit
@@ -142,10 +136,10 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
             "SessionId": "int",
             "ParticipantId": "int",
             "SequenceId": "int",
-            "GazeX_sc": "float32",
-            "GazeY_sc": "float32",
-            "GazeX_px": "float32",
-            "GazeY_px": "float32",
+            "X_sc": "float32",
+            "Y_sc": "float32",
+            "X_px": "float32",
+            "Y_px": "float32",
             "Timestamp_ns": "int64",
         }
     )
@@ -157,28 +151,31 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
             "SessionId",
             "ParticipantId",
             "SequenceId",
-            "GazeX_sc",
-            "GazeY_sc",
-            "GazeX_px",
-            "GazeY_px",
+            "X_sc",
+            "Y_sc",
+            "X_px",
+            "Y_px",
             "Timestamp_ns",
         ]
     ]
 
-    print("✅ Eye tracking data processed.")
+    print("✅ Gaze data processed.")
 
     return data
 
 
-def get_interpolated_data(data: pd.DataFrame) -> pd.DataFrame:
+def get_interpolated_data(
+    data: pd.DataFrame,
+    resampling_rate: str = "50ms",
+) -> pd.DataFrame:
     """
-    Interpolate the eye tracking data.
+    Get interpolated gaze data.
 
     Args:
-        data (pd.DataFrame): The eye tracking data.
+        data (pd.DataFrame): The gaze data.
 
     Returns:
-        pd.DataFrame: The interpolated eye tracking data.
+        pd.DataFrame: The interpolated gaze data.
     """
     data = data.copy()
 
@@ -188,7 +185,7 @@ def get_interpolated_data(data: pd.DataFrame) -> pd.DataFrame:
     groups = [data.get_group(x) for x in data.groups]
 
     for i, group in tqdm(
-        enumerate(groups), total=len(groups), desc="⌛ Interpolating eye tracking data"
+        enumerate(groups), total=len(groups), desc="⌛ Interpolating gaze data"
     ):
         group = group.copy()
         group = group.set_index("DateTime")
@@ -200,8 +197,8 @@ def get_interpolated_data(data: pd.DataFrame) -> pd.DataFrame:
         sequence_id = group["SequenceId"].iloc[0]
 
         # Resample and interpolate the data
-        columns_to_interpolate = ["GazeX_sc", "GazeY_sc", "GazeX_px", "GazeY_px"]
-        resampled_group = group[columns_to_interpolate].resample("50ms").mean()
+        columns_to_interpolate = ["X_sc", "Y_sc", "X_px", "Y_px"]
+        resampled_group = group[columns_to_interpolate].resample(resampling_rate).mean()
         interpolated_group = resampled_group.interpolate(method="linear")
         interpolated_group = interpolated_group.reset_index()
 
@@ -226,10 +223,10 @@ def get_interpolated_data(data: pd.DataFrame) -> pd.DataFrame:
             "SessionId": "int",
             "ParticipantId": "int",
             "SequenceId": "int",
-            "GazeX_sc": "float32",
-            "GazeY_sc": "float32",
-            "GazeX_px": "float32",
-            "GazeY_px": "float32",
+            "X_sc": "float32",
+            "Y_sc": "float32",
+            "X_px": "float32",
+            "Y_px": "float32",
             "Timestamp_ns": "int64",
         }
     )
@@ -240,10 +237,10 @@ def get_interpolated_data(data: pd.DataFrame) -> pd.DataFrame:
             "SessionId",
             "ParticipantId",
             "SequenceId",
-            "GazeX_sc",
-            "GazeY_sc",
-            "GazeX_px",
-            "GazeY_px",
+            "X_sc",
+            "Y_sc",
+            "X_px",
+            "Y_px",
             "Timestamp_ns",
         ]
     ]
@@ -255,10 +252,10 @@ def get_fixation_data_from_group(
     group: pd.DataFrame, dispersion_threshold_px: float, duration_threshold_ns: float
 ) -> List[Dict[str, Any]]:
     """
-    Get fixation data from a single sequence of eye tracking data.
+    Get fixation data from a single sequence of gaze data.
 
     Args:
-        group (pd.DataFrame): The group of eye tracking data.
+        group (pd.DataFrame): The group of gaze data.
         dispersion_threshold_px (float): The dispersion threshold for fixation detection in pixels.
         duration_threshold_ns (float): The duration threshold for fixation detection in nanoseconds.
 
@@ -277,10 +274,10 @@ def get_fixation_data_from_group(
             continue
 
         dispersion = (
-            group["GazeX_px"].iloc[start_index:curr_index].max()
-            - group["GazeX_px"].iloc[start_index:curr_index].min()
-            + group["GazeY_px"].iloc[start_index:curr_index].max()
-            - group["GazeY_px"].iloc[start_index:curr_index].min()
+            group["X_px"].iloc[start_index:curr_index].max()
+            - group["X_px"].iloc[start_index:curr_index].min()
+            + group["Y_px"].iloc[start_index:curr_index].max()
+            - group["Y_px"].iloc[start_index:curr_index].min()
         )
         # Define the window as a fixation if it does not exceed the dispersion threshold, and increase the size of the window
         if dispersion < dispersion_threshold_px and curr_index < len(group) - 1:
@@ -295,10 +292,10 @@ def get_fixation_data_from_group(
                         "SessionId": group["SessionId"].iloc[start_index],
                         "ParticipantId": group["ParticipantId"].iloc[start_index],
                         "SequenceId": group["SequenceId"].iloc[start_index],
-                        "FixationX_sc": group["GazeX_sc"].iloc[start_index:curr_index].mean(),
-                        "FixationY_sc": group["GazeY_sc"].iloc[start_index:curr_index].mean(),
-                        "FixationX_px": group["GazeX_px"].iloc[start_index:curr_index].mean(),
-                        "FixationY_px": group["GazeY_px"].iloc[start_index:curr_index].mean(),
+                        "X_sc": group["X_sc"].iloc[start_index:curr_index].mean(),
+                        "Y_sc": group["Y_sc"].iloc[start_index:curr_index].mean(),
+                        "X_px": group["X_px"].iloc[start_index:curr_index].mean(),
+                        "Y_px": group["Y_px"].iloc[start_index:curr_index].mean(),
                         "StartTimestamp_ns": start_timestamp,
                         "EndTimestamp_ns": end_timestamp,
                         "Duration_ns": fixation_duration,
@@ -316,10 +313,10 @@ def get_fixation_data(
     duration_threshold_ns: float,
 ) -> pd.DataFrame:
     """
-    Get fixation data from the eye tracking data.
+    Get fixation data from the gaze data.
 
     Args:
-        data (pd.DataFrame): The eye tracking data.
+        data (pd.DataFrame): The gaze data.
         dispersion_threshold_px (float): The dispersion threshold for fixation detection in pixels.
         duration_threshold_ns (float): The duration threshold for fixation detection in nanoseconds.
 
@@ -347,10 +344,10 @@ def get_fixation_data(
             "SessionId": "int",
             "ParticipantId": "int",
             "SequenceId": "int",
-            "FixationX_sc": "float32",
-            "FixationY_sc": "float32",
-            "FixationX_px": "float32",
-            "FixationY_px": "float32",
+            "X_sc": "float32",
+            "Y_sc": "float32",
+            "X_px": "float32",
+            "Y_px": "float32",
             "StartTimestamp_ns": "int64",
             "EndTimestamp_ns": "int64",
             "Duration_ns": "int64",
@@ -363,10 +360,10 @@ def get_fixation_data(
             "SessionId",
             "ParticipantId",
             "SequenceId",
-            "FixationX_sc",
-            "FixationY_sc",
-            "FixationX_px",
-            "FixationY_px",
+            "X_sc",
+            "Y_sc",
+            "X_px",
+            "Y_px",
             "StartTimestamp_ns",
             "EndTimestamp_ns",
             "Duration_ns",
@@ -378,12 +375,12 @@ def get_fixation_data(
 
 def parse_arguments() -> argparse.Namespace:
     """
-    Parse the command line arguments.
+    Parse command line arguments.
 
     Returns:
         argparse.Namespace: The parsed arguments.
     """
-    parser = argparse.ArgumentParser(description="Process raw eye tracking data.")
+    parser = argparse.ArgumentParser(description="Process raw gaze data.")
     parser.add_argument(
         "--dispersion-threshold",
         "-dit",
@@ -404,14 +401,14 @@ def parse_arguments() -> argparse.Namespace:
 
 def main() -> None:
     """
-    Main function for processing the raw eye tracking data.
+    Main function for processing the raw gaze data.
     """
     args = parse_arguments()
     dispersion_threshold = args.dispersion_threshold
     duration_threshold = args.duration_threshold
 
-    # Remove old processed eye tracking data file
-    print("➡️  Removing old eye tracking data files.")
+    # Remove old processed gaze data file
+    print("➡️ Removing old gaze data files.")
     data_file_path = (
         f"{PROCESSED_EYE_TRACKING_DATA_PATH}/{PROCESSED_EYE_TRACKING_FILE_NAME}"
     )
@@ -426,20 +423,22 @@ def main() -> None:
 
     raw_data = get_raw_data()
     processed_data = process_data(raw_data)
-    interpolated_data = get_interpolated_data(processed_data)
+    interpolated_data = get_interpolated_data(
+        processed_data, resampling_rate=RESAMPLING_RATE
+    )
     fixation_data = get_fixation_data(
         data=interpolated_data,
         dispersion_threshold_px=dispersion_threshold,
         duration_threshold_ns=duration_threshold,
     )
 
-    # Save processed eye tracking data
+    # Save processed gaze data
     os.makedirs(PROCESSED_EYE_TRACKING_DATA_PATH, exist_ok=True)
     processed_data.to_csv(data_file_path, index=False)
     interpolated_data.to_csv(interpolated_data_file_path, index=False)
     fixation_data.to_csv(fixation_data_file_path, index=False)
     print(
-        f"✅ Saved processed and interpolated eye tracking data to {data_file_path} and {interpolated_data_file_path}."
+        f"✅ Saved processed and interpolated gaze data to {data_file_path} and {interpolated_data_file_path}."
     )
 
 

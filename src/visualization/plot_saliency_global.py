@@ -10,7 +10,8 @@ from typing import List, Tuple
 import matplotlib.pyplot as plt
 
 from src.visualization.plot_eye_tracking import (
-    get_grouped_eye_tracking_data,
+    get_grouped_processed_data,
+    get_grouped_fixation_data,
     get_background,
     draw_gaze_saliency,
 )
@@ -34,7 +35,7 @@ def get_coordinates(groups: List[pd.DataFrame]) -> List[Tuple[float, float]]:
     """
     coordinates = []
     for group in groups:
-        group_coordinates = group[["GazeX", "GazeY"]].values
+        group_coordinates = group[["X_sc", "Y_sc"]].values
         if group_coordinates.size > 0:
             coordinates.extend(group_coordinates)
     return coordinates
@@ -48,15 +49,27 @@ def get_gaze_saliency_global(
     frame_height: int,
     saliency_resolution_ratio: float,
     kde_bandwidth: float,
+    use_fixations: bool,
+    use_interpolated: bool,
 ):
     # Get eye tracking data
-    groups = get_grouped_eye_tracking_data(
-        experiment_id=experiment_id,
-        session_id=session_id,
-        participant_ids=participant_ids,
-        sequence_id=sequence_id,
-        fps=1,
-    )
+    if use_fixations:
+        groups = get_grouped_fixation_data(
+            experiment_id=experiment_id,
+            session_id=session_id,
+            participant_ids=participant_ids,
+            sequence_id=sequence_id,
+            fps=1,
+        )
+    else:
+        groups = get_grouped_processed_data(
+            experiment_id=experiment_id,
+            session_id=session_id,
+            participant_ids=participant_ids,
+            sequence_id=sequence_id,
+            fps=1,
+            interpolated=use_interpolated,
+        )
 
     # Get background image, taking first frame if this is a video sequence
     background, _ = get_background(
@@ -96,6 +109,8 @@ def visualize_gaze_saliency_global(
     frame_height: int,
     saliency_resolution_ratio: float,
     kde_bandwidth: float,
+    use_fixations: bool,
+    use_interpolated: bool,
 ) -> None:
     """
     Visualize gaze saliency for the given experiment, session, participant(s), and sequence.
@@ -109,6 +124,8 @@ def visualize_gaze_saliency_global(
         frame_height (int): The frame height.
         saliency_resolution_ratio (float): The saliency resolution ratio.
         kde_bandwidth (float): The bandwidth for the Kernel Density Estimation.
+        use_fixations (bool): Use fixations instead of gaze points.
+        use_interpolated (bool): Whether to use interpolated data.
     """
     session1_frame = get_gaze_saliency_global(
         experiment_id=experiment_id,
@@ -119,6 +136,8 @@ def visualize_gaze_saliency_global(
         frame_height=frame_height,
         saliency_resolution_ratio=saliency_resolution_ratio,
         kde_bandwidth=kde_bandwidth,
+        use_fixations=use_fixations,
+        use_interpolated=use_interpolated,
     )
     session1_frame = session1_frame[..., ::-1]
     session2_frame = get_gaze_saliency_global(
@@ -130,6 +149,8 @@ def visualize_gaze_saliency_global(
         frame_height=frame_height,
         saliency_resolution_ratio=saliency_resolution_ratio,
         kde_bandwidth=kde_bandwidth,
+        use_fixations=use_fixations,
+        use_interpolated=use_interpolated,
     )
     session2_frame = session2_frame[..., ::-1]
 
@@ -151,7 +172,7 @@ def visualize_gaze_saliency_global(
 
 def parse_arguments() -> argparse.Namespace:
     """
-    Parse the command line arguments.
+    Parse command line arguments.
 
     Returns:
         argparse.Namespace: The command line arguments.
@@ -214,6 +235,18 @@ def parse_arguments() -> argparse.Namespace:
         default=DEFAULT_KDE_BANDWIDTH,
         help="The bandwidth for the Kernel Density Estimation.",
     )
+    parser.add_argument(
+        "--use-fixations",
+        "-f",
+        action="store_true",
+        help="Use fixations instead of gaze points.",
+    )
+    parser.add_argument(
+        "--use-interpolated",
+        "-i",
+        action="store_true",
+        help="Whether to use interpolated data.",
+    )
 
     return parser.parse_args()
 
@@ -231,6 +264,11 @@ def main() -> None:
     frame_height = args.frame_height
     saliency_resolution_ratio = args.saliency_resolution_ratio
     kde_bandwidth = args.kde_bandwidth
+    use_fixations = args.use_fixations
+    use_interpolated = args.use_interpolated
+
+    if use_fixations and use_interpolated:
+        raise ValueError("❌ Cannot use both fixations and interpolated data.")
 
     visualize_gaze_saliency_global(
         experiment_id=experiment_id,
@@ -241,6 +279,8 @@ def main() -> None:
         frame_height=frame_height,
         saliency_resolution_ratio=saliency_resolution_ratio,
         kde_bandwidth=kde_bandwidth,
+        use_fixations=use_fixations,
+        use_interpolated=use_interpolated,
     )
 
 

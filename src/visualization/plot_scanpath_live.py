@@ -13,7 +13,8 @@ from typing import List, Tuple
 
 from src.utils.coordinates_buffer import CoordinatesBuffer
 from src.visualization.plot_eye_tracking import (
-    get_grouped_eye_tracking_data,
+    get_grouped_processed_data,
+    get_grouped_fixation_data,
     get_background,
     get_background_frame,
     draw_information,
@@ -55,7 +56,7 @@ def update_coordinates_buffers(
         if curr_frame == next_frame:
             # Update current gaze coordinates
             curr_group_coordinates = group[group["FrameNumber"] == curr_frame][
-                ["GazeX_sc", "GazeY_sc"]
+                ["X_sc", "Y_sc"]
             ].values[0]
             coordinates_buffers[i].add(curr_group_coordinates)
 
@@ -72,8 +73,33 @@ def update_coordinates_buffers(
     return coordinates_buffers, next_frames
 
 
+def get_fixations(
+    groups: List[pd.DataFrame],
+    curr_frame: int,
+) -> List[Tuple[float, float]]:
+    """
+    Get fixations for the current frame.
+
+    Args:
+        groups (List[pd.DataFrame]): The fixation data grouped by single sequence experiment.
+        curr_frame (int): The current frame number.
+
+    Returns:
+        List[Tuple[float, float]]: The fixations for the current frame.
+    """
+    fixations = []
+    for group in groups:
+        group_fixations = group[(group["StartFrameNumber"] <= curr_frame) & (curr_frame <= group["EndFrameNumber"])][
+            ["X_sc", "Y_sc"]
+        ].values
+        fixations.extend(group_fixations)
+
+    return fixations
+
+
 def draw_gaze_scanpath_live(
     coordinates_buffers: List[CoordinatesBuffer],
+    fixations: List[Tuple[float, float]],
     frame: np.ndarray,
     frame_width: int,
     frame_height: int,
@@ -85,6 +111,7 @@ def draw_gaze_scanpath_live(
 
     Args:
         coordinates_buffers (List[CoordinatesBuffer]): The coordinates buffers.
+        fixations (List[Tuple[float, float]]): The fixations.
         frame (np.ndarray): The frame.
         frame_width (int): The frame width.
         frame_height (int): The frame height.
@@ -116,6 +143,8 @@ def draw_gaze_scanpath_live(
             color=color,
             thickness=-1,
         )
+
+        # Draw scanpath trail
         for (x1, y1), (x2, y2) in zip(coordinate_buffer, coordinate_buffer[1:]):
             x1 = int(x1 * frame_width)
             y1 = int(y1 * frame_height)
@@ -127,6 +156,19 @@ def draw_gaze_scanpath_live(
                 (x2, y2),
                 color=color,
                 thickness=line_thickness,
+            )
+
+        # Draw fixations
+        for fixation in fixations:
+            x, y = fixation
+            x = int(x * frame_width)
+            y = int(y * frame_height)
+            cv2.circle(
+                overlay,
+                (x, y),
+                radius=1,
+                color=(255, 255, 255),
+                thickness=-1,
             )
 
     overlay_mask = overlay.sum(axis=2) > 0
@@ -147,7 +189,7 @@ def visualize_gaze_scanpath_live(
     circle_radius: int,
     line_thickness: int,
     trail_length: int,
-    interpolated: bool,
+    use_interpolated: bool,
 ) -> None:
     """
     Visualize gaze live sequence for the given experiment, session, participant(s), and sequence.
@@ -164,16 +206,24 @@ def visualize_gaze_scanpath_live(
         circle_radius (int): The circle radius.
         line_thickness (int): The line thickness.
         trail_length (int): The trail length.
-        interpolated (bool): Whether to use interpolated data.
+        use_interpolated (bool): Whether to use interpolated data.
     """
     # Get eye tracking data
-    groups = get_grouped_eye_tracking_data(
+    processed_groups = get_grouped_processed_data(
         experiment_id=experiment_id,
         session_id=session_id,
         participant_ids=participant_ids,
         sequence_id=sequence_id,
         fps=fps,
-        interpolated=interpolated,
+        interpolated=use_interpolated,
+    )
+
+    fixation_groups = get_grouped_fixation_data(
+        experiment_id=experiment_id,
+        session_id=session_id,
+        participant_ids=participant_ids,
+        sequence_id=sequence_id,
+        fps=fps,
     )
 
     # Get background image or video
@@ -190,9 +240,10 @@ def visualize_gaze_scanpath_live(
     out = cv2.VideoWriter(output_file_path, fourcc, fps, (frame_width, frame_height))
 
     curr_frame = 0
-    next_frames = [group["FrameNumber"].iloc[0] for group in groups]
-    max_frame = max([group["FrameNumber"].max() for group in groups])
-    coordinates_buffers = [CoordinatesBuffer(max_length=trail_length) for _ in groups]
+    next_frames = [group["FrameNumber"].iloc[0] for group in processed_groups]
+    max_frame = max([group["FrameNumber"].max() for group in processed_groups])
+    coordinates_buffers = [CoordinatesBuffer(max_length=trail_length) for _ in processed_groups]
+    fixations = []
     bar = tqdm(total=max_frame, desc="⌛ Generating gaze video...", unit="frames")
     while curr_frame < max_frame:
 
@@ -206,16 +257,22 @@ def visualize_gaze_scanpath_live(
 
         # Update current gaze coordinates
         coordinates_buffers, next_frames = update_coordinates_buffers(
-            groups=groups,
+            groups=processed_groups,
             next_frames=next_frames,
             curr_frame=curr_frame,
             max_frame=max_frame,
             coordinates_buffers=coordinates_buffers,
         )
 
+        fixations = get_fixations(
+            groups=fixation_groups,
+            curr_frame=curr_frame,
+        )
+
         # Draw gaze coordinates and information on frame
         frame = draw_gaze_scanpath_live(
             coordinates_buffers=coordinates_buffers,
+            fixations=fixations,
             frame=frame,
             frame_width=frame_width,
             frame_height=frame_height,
@@ -330,7 +387,7 @@ def parse_arguments() -> argparse.Namespace:
         help="The trail length.",
     )
     parser.add_argument(
-        "--interpolated",
+        "--use-interpolated",
         "-i",
         action="store_true",
         help="Whether to use interpolated data.",
@@ -355,7 +412,7 @@ def main() -> None:
     circle_radius = args.circle_radius
     line_thickness = args.line_thickness
     trail_length = args.trail_length
-    interpolated = args.interpolated
+    use_interpolated = args.use_interpolated
 
     visualize_gaze_scanpath_live(
         experiment_id=experiment_id,
@@ -369,7 +426,7 @@ def main() -> None:
         circle_radius=circle_radius,
         line_thickness=line_thickness,
         trail_length=trail_length,
-        interpolated=interpolated,
+        use_interpolated=use_interpolated,
     )
 
 
