@@ -279,30 +279,31 @@ def get_fixation_data_from_group(
             + group["Y_px"].iloc[start_index:curr_index].max()
             - group["Y_px"].iloc[start_index:curr_index].min()
         )
+        
         # Define the window as a fixation if it does not exceed the dispersion threshold, and increase the size of the window
         if dispersion < dispersion_threshold_px and curr_index < len(group) - 1:
             is_fixation = True
             continue
+
         # If the threshold is exceeded, save the fixation point and start over with next points in the time-series
-        else:
-            if is_fixation:
-                fixation_data.append(
-                    {
-                        "ExperimentId": group["ExperimentId"].iloc[start_index],
-                        "SessionId": group["SessionId"].iloc[start_index],
-                        "ParticipantId": group["ParticipantId"].iloc[start_index],
-                        "SequenceId": group["SequenceId"].iloc[start_index],
-                        "X_sc": group["X_sc"].iloc[start_index:curr_index].mean(),
-                        "Y_sc": group["Y_sc"].iloc[start_index:curr_index].mean(),
-                        "X_px": group["X_px"].iloc[start_index:curr_index].mean(),
-                        "Y_px": group["Y_px"].iloc[start_index:curr_index].mean(),
-                        "StartTimestamp_ns": start_timestamp,
-                        "EndTimestamp_ns": end_timestamp,
-                        "Duration_ns": fixation_duration,
-                    }
-                )
-            start_index = curr_index
-            is_fixation = False
+        if is_fixation:
+            fixation_data.append(
+                {
+                    "ExperimentId": group["ExperimentId"].iloc[start_index],
+                    "SessionId": group["SessionId"].iloc[start_index],
+                    "ParticipantId": group["ParticipantId"].iloc[start_index],
+                    "SequenceId": group["SequenceId"].iloc[start_index],
+                    "X_sc": group["X_sc"].iloc[start_index:curr_index].mean(),
+                    "Y_sc": group["Y_sc"].iloc[start_index:curr_index].mean(),
+                    "X_px": group["X_px"].iloc[start_index:curr_index].mean(),
+                    "Y_px": group["Y_px"].iloc[start_index:curr_index].mean(),
+                    "StartTimestamp_ns": start_timestamp,
+                    "EndTimestamp_ns": end_timestamp,
+                    "Duration_ns": fixation_duration,
+                }
+            )
+        start_index = curr_index
+        is_fixation = False
 
     return fixation_data
 

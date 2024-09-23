@@ -28,7 +28,7 @@ DEFAULT_FRAME_HEIGHT = 384
 DEFAULT_FPS = 60
 DEFAULT_CIRCLE_RADIUS = 3
 DEFAULT_LINE_THICKNESS = 1
-DEFAULT_TRAIL_LENGTH = 10
+DEFAULT_TRAIL_LENGTH = 1
 
 
 def update_coordinates_buffers(
@@ -166,7 +166,7 @@ def draw_gaze_scanpath_live(
             cv2.circle(
                 overlay,
                 (x, y),
-                radius=1,
+                radius=circle_radius,
                 color=(255, 255, 255),
                 thickness=-1,
             )
@@ -224,6 +224,7 @@ def visualize_gaze_scanpath_live(
         participant_ids=participant_ids,
         sequence_id=sequence_id,
         fps=fps,
+        processed_groups=processed_groups,
     )
 
     # Get background image or video

@@ -97,7 +97,20 @@ def with_time_since_start_column(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 
-def with_time_since_start_end_column(data: pd.DataFrame) -> pd.DataFrame:
+def with_time_since_start_end_column(
+        data: pd.DataFrame,
+        processed_groups: List[pd.DataFrame] | None = None,
+        ) -> pd.DataFrame:
+    """
+    Add columns with the time since the start and end of the experiment in hundredths of a nanosecond.
+    
+    Args:
+        data (pd.DataFrame): The eye tracking data.
+        processed_groups (List[pd.DataFrame] | None, optional): The processed gaze data grouped by single sequence experiment. Used to calibrate the start and end frame numbers since the first fixation entry does not necessarily start at the beginning of the sequence. Defaults to None.
+
+    Returns:
+        pd.DataFrame: The eye tracking data with the time difference columns.
+    """
     if "StartTimeSinceStart_ns" in data.columns and "EndTimeSinceStart_ns" in data.columns:
         print(" ⚠️  StartTimeSinceStart_ns and EndTimeSinceStart_ns columns already exist in the data, skipping...")
         return data
@@ -116,7 +129,24 @@ def with_time_since_start_end_column(data: pd.DataFrame) -> pd.DataFrame:
     for i, group in enumerate(groups):
         group = group.copy()
 
-        start_time = group["StartTimestamp_ns"].min()
+        # Get start time either by getting the minimum start timestampof the data itself or from the corresponding group
+        if processed_groups is None:
+            start_time = group["StartTimestamp_ns"].min()
+        else:
+            # get Timestamp_ns min from the corresponding group
+            corresponding_group = next((
+                g for g in processed_groups if 
+                g["ExperimentId"].iloc[0] == group["ExperimentId"].iloc[0] and
+                g["SessionId"].iloc[0] == group["SessionId"].iloc[0] and
+                g["ParticipantId"].iloc[0] == group["ParticipantId"].iloc[0] and
+                g["SequenceId"].iloc[0] == group["SequenceId"].iloc[0]
+            ), None)
+            if corresponding_group is None:
+                print(" ⚠️  No corresponding group found, getting the minimum start timestamp of the data itself.")
+                start_time = group["StartTimestamp_ns"].min()
+            else:
+                start_time = corresponding_group["Timestamp_ns"].min()
+
         group["StartTimeSinceStart_ns"] = group["StartTimestamp_ns"] - start_time
         group["EndTimeSinceStart_ns"] = group["EndTimestamp_ns"] - start_time
         groups[i] = group

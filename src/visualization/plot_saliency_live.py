@@ -106,18 +106,15 @@ def visualize_gaze_saliency_live(
         kde_bandwidth (float): The bandwidth for the Kernel Density Estimation.
         use_fixations (bool): Use fixations instead of gaze points.
         use_interpolated (bool): Whether to use interpolated data.
+
+    Raises:
+        ValueError: If both fixations and interpolated data are requested.
     """
-    # Get eye tracking data
-    if use_fixations:
-        groups = get_grouped_fixation_data(
-            experiment_id=experiment_id,
-            session_id=session_id,
-            participant_ids=participant_ids,
-            sequence_id=sequence_id,
-            fps=fps,
-        )
-    else:
-        groups = get_grouped_processed_data(
+    if use_fixations and use_interpolated:
+        raise ValueError("❌ Cannot use both fixations and interpolated data.")
+    
+    # Get gaze data
+    processed_groups = get_grouped_processed_data(
             experiment_id=experiment_id,
             session_id=session_id,
             participant_ids=participant_ids,
@@ -125,6 +122,18 @@ def visualize_gaze_saliency_live(
             fps=fps,
             interpolated=use_interpolated,
         )
+    
+    if use_fixations:
+        groups = get_grouped_fixation_data(
+            experiment_id=experiment_id,
+            session_id=session_id,
+            participant_ids=participant_ids,
+            sequence_id=sequence_id,
+            fps=fps,
+            processed_groups=processed_groups,
+        )
+    else:
+        groups = processed_groups
 
     # Get background image or video
     background, background_fps = get_background(

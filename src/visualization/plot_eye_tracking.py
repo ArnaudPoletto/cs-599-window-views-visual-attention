@@ -76,7 +76,6 @@ def get_grouped_processed_data(
         )
         group["FrameNumber"] = group["FrameNumber"].astype(int)
         groups[i] = group
-
     print("✅ Processed data loaded.")
 
     return groups
@@ -88,7 +87,25 @@ def get_grouped_fixation_data(
     participant_ids: List[int] | None,
     sequence_id: int,
     fps: int,
+    processed_groups: List[pd.DataFrame],
 ) -> List[pd.DataFrame]:
+    """
+    Get the fixation data grouped by single sequence experiment.
+
+    Args:
+        experiment_id (int): The experiment ID.
+        session_id (int): The session ID.
+        participant_ids (List[int] | None): The participant IDs.
+        sequence_id (int): The sequence ID.
+        fps (int): The frames per second.
+        processed_groups (List[pd.DataFrame]): The processed gaze data grouped by single sequence experiment. Used to calibrate the start and end frame numbers since the first fixation entry does not necessarily start at the beginning of the sequence.
+
+    Raises:
+        ValueError: If no data is found for the provided ids.
+
+    Returns:
+        List[pd.DataFrame]: The fixation data grouped by single sequence experiment.
+    """
     # Get data and group by single sequence experiment
     data = get_eye_tracking_data(
         experiment_id=experiment_id,
@@ -97,7 +114,9 @@ def get_grouped_fixation_data(
         sequence_ids=[sequence_id],
         fixation=True,
     )
-    data = with_time_since_start_end_column(data)
+    data = with_time_since_start_end_column(
+        data=data, processed_groups=processed_groups
+    )
     data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId"])
     groups = [data.get_group(group) for group in data.groups]
 
@@ -105,7 +124,7 @@ def get_grouped_fixation_data(
         raise ValueError(
             f"❌ No data found for experiment {experiment_id}, session {session_id}, and participant(s) {participant_ids}."
         )
-    
+
     # Add start and end frame numbers
     for i, group in enumerate(groups):
         group = group.copy()
@@ -118,7 +137,6 @@ def get_grouped_fixation_data(
         )
         group["EndFrameNumber"] = group["EndFrameNumber"].astype(int)
         groups[i] = group
-
     print("✅ Fixation data loaded.")
 
     return groups

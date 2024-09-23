@@ -53,6 +53,14 @@ def get_gaze_saliency_global(
     use_interpolated: bool,
 ):
     # Get eye tracking data
+    processed_groups = get_grouped_processed_data(
+        experiment_id=experiment_id,
+        session_id=session_id,
+        participant_ids=participant_ids,
+        sequence_id=sequence_id,
+        fps=1,
+        interpolated=use_interpolated,
+    )
     if use_fixations:
         groups = get_grouped_fixation_data(
             experiment_id=experiment_id,
@@ -60,16 +68,10 @@ def get_gaze_saliency_global(
             participant_ids=participant_ids,
             sequence_id=sequence_id,
             fps=1,
+            processed_groups=processed_groups,
         )
     else:
-        groups = get_grouped_processed_data(
-            experiment_id=experiment_id,
-            session_id=session_id,
-            participant_ids=participant_ids,
-            sequence_id=sequence_id,
-            fps=1,
-            interpolated=use_interpolated,
-        )
+        groups = processed_groups
 
     # Get background image, taking first frame if this is a video sequence
     background, _ = get_background(
@@ -127,6 +129,9 @@ def visualize_gaze_saliency_global(
         use_fixations (bool): Use fixations instead of gaze points.
         use_interpolated (bool): Whether to use interpolated data.
     """
+    if use_fixations and use_interpolated:
+        raise ValueError("❌ Cannot use both fixations and interpolated data.")
+    
     session1_frame = get_gaze_saliency_global(
         experiment_id=experiment_id,
         session_id=1,
@@ -266,9 +271,6 @@ def main() -> None:
     kde_bandwidth = args.kde_bandwidth
     use_fixations = args.use_fixations
     use_interpolated = args.use_interpolated
-
-    if use_fixations and use_interpolated:
-        raise ValueError("❌ Cannot use both fixations and interpolated data.")
 
     visualize_gaze_saliency_global(
         experiment_id=experiment_id,
