@@ -5,6 +5,7 @@ GLOBAL_DIR = Path(__file__).parent / ".." / ".."
 sys.path.append(str(GLOBAL_DIR))
 
 import argparse
+import numpy as np
 import pandas as pd
 from typing import List, Tuple
 import matplotlib.pyplot as plt
@@ -13,7 +14,7 @@ from src.visualization.plot_eye_tracking import (
     get_grouped_processed_data,
     get_grouped_fixation_data,
     get_background,
-    draw_gaze_saliency,
+    draw_saliency,
 )
 from src.config import GENERATED_PATH
 
@@ -25,26 +26,26 @@ DEFAULT_KDE_BANDWIDTH = 10.0
 
 def get_coordinates(groups: List[pd.DataFrame]) -> List[Tuple[float, float]]:
     """
-    Get the gaze coordinates.
+    Get the coordinates.
 
     Args:
-        groups (List[pd.DataFrame]): The grouped eye tracking data.
+        groups (List[pd.DataFrame]): The grouped data.
 
     Returns:
-        List[Tuple[float, float]]: The gaze coordinates.
+        List[Tuple[float, float]]: The coordinates.
     """
     coordinates = []
     for group in groups:
         group_coordinates = group[["X_sc", "Y_sc"]].values
-        if group_coordinates.size > 0:
-            coordinates.extend(group_coordinates)
+        coordinates.extend(group_coordinates)
     return coordinates
 
-def get_gaze_saliency_global(
-    experiment_id: int,
-    session_id: int,
+
+def get_saliency_global(
+    experiment_ids: List[int] | None,
+    session_ids: List[int] | None,
     participant_ids: List[int] | None,
-    sequence_id: int,
+    sequence_ids: List[int] | None,
     frame_width: int,
     frame_height: int,
     saliency_resolution_ratio: float,
@@ -52,21 +53,39 @@ def get_gaze_saliency_global(
     use_fixations: bool,
     use_interpolated: bool,
 ):
-    # Get eye tracking data
+    """
+    Get the global saliency map.
+
+    Args:
+        experiment_ids (List[int] | None): The experiment ID.
+        session_ids (List[int] | None): The session ID.
+        participant_ids (List[int] | None): The participant ID.
+        sequence_ids (List[int] | None): The sequence ID.
+        frame_width (int): The frame width.
+        frame_height (int): The frame height.
+        saliency_resolution_ratio (float): The saliency resolution ratio.
+        kde_bandwidth (float): The bandwidth for the Kernel Density Estimation.
+        use_fixations (bool): Use fixations instead of gaze points.
+        use_interpolated (bool): Whether to use interpolated data.
+
+    Returns:
+        np.ndarray: The frame with the saliency map.
+    """
+    # Get data
     processed_groups = get_grouped_processed_data(
-        experiment_id=experiment_id,
-        session_id=session_id,
+        experiment_ids=experiment_ids,
+        session_ids=session_ids,
         participant_ids=participant_ids,
-        sequence_id=sequence_id,
+        sequence_ids=sequence_ids,
         fps=1,
         interpolated=use_interpolated,
     )
     if use_fixations:
         groups = get_grouped_fixation_data(
-            experiment_id=experiment_id,
-            session_id=session_id,
+            experiment_ids=experiment_ids,
+            session_ids=session_ids,
             participant_ids=participant_ids,
-            sequence_id=sequence_id,
+            sequence_ids=sequence_ids,
             fps=1,
             processed_groups=processed_groups,
         )
@@ -74,23 +93,36 @@ def get_gaze_saliency_global(
         groups = processed_groups
 
     # Get background image, taking first frame if this is a video sequence
-    background, _ = get_background(
-        experiment_id=experiment_id,
-        session_id=session_id,
-        sequence_id=sequence_id,
-        frame_width=frame_width,
-        frame_height=frame_height,
-    )
-    if isinstance(background, List):
-        background = background[0]
+    # If multiple experiments, sessions, or sequences are provided, use a black background
+    if (
+        experiment_ids is not None
+        and len(experiment_ids) == 1
+        and session_ids is not None
+        and len(session_ids) == 1
+        and sequence_ids is not None
+        and len(sequence_ids) == 1
+    ):
+        experiment_id = experiment_ids[0]
+        session_id = session_ids[0]
+        sequence_id = sequence_ids[0]
+        background, _ = get_background(
+            experiment_id=experiment_id,
+            session_id=session_id,
+            sequence_id=sequence_id,
+            frame_width=frame_width,
+            frame_height=frame_height,
+            only_first_frame=True,
+        )
+    else:
+        background = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
 
     # Get coordinates for each session
     coordinates = get_coordinates(groups=groups)
 
-    # Draw gaze saliency for each session
+    # Draw saliency
     saliency_width = int(frame_width * saliency_resolution_ratio)
     saliency_height = int(frame_height * saliency_resolution_ratio)
-    frame = draw_gaze_saliency(
+    frame = draw_saliency(
         coordinates=coordinates,
         frame=background,
         frame_width=frame_width,
@@ -102,10 +134,12 @@ def get_gaze_saliency_global(
 
     return frame
 
-def visualize_gaze_saliency_global(
-    experiment_id: int,
+
+def visualize_saliency_global(
+    experiment_ids: List[int] | None,
+    session_ids: List[int] | None,
     participant_ids: List[int] | None,
-    sequence_id: int,
+    sequence_ids: List[int] | None,
     output_file_path: str,
     frame_width: int,
     frame_height: int,
@@ -115,12 +149,13 @@ def visualize_gaze_saliency_global(
     use_interpolated: bool,
 ) -> None:
     """
-    Visualize gaze saliency for the given experiment, session, participant(s), and sequence.
+    Visualize saliency.
 
     Args:
-        experiment_id (int): The experiment ID.
-        participant_id (int): The participant ID.
-        sequence_id (int): The sequence ID.
+        experiment_ids (List[int] | None): The experiment ID.
+        session_ids (List[int] | None): The session ID.
+        participant_ids (List[int] | None): The participant ID.
+        sequence_ids (List[int] | None): The sequence ID.
         output_file_path (str): The output file path.
         frame_width (int): The frame width.
         frame_height (int): The frame height.
@@ -131,49 +166,53 @@ def visualize_gaze_saliency_global(
     """
     if use_fixations and use_interpolated:
         raise ValueError("❌ Cannot use both fixations and interpolated data.")
-    
-    session1_frame = get_gaze_saliency_global(
-        experiment_id=experiment_id,
-        session_id=1,
-        participant_ids=participant_ids,
-        sequence_id=sequence_id,
-        frame_width=frame_width,
-        frame_height=frame_height,
-        saliency_resolution_ratio=saliency_resolution_ratio,
-        kde_bandwidth=kde_bandwidth,
-        use_fixations=use_fixations,
-        use_interpolated=use_interpolated,
-    )
-    session1_frame = session1_frame[..., ::-1]
-    session2_frame = get_gaze_saliency_global(
-        experiment_id=experiment_id,
-        session_id=2,
-        participant_ids=participant_ids,
-        sequence_id=sequence_id,
-        frame_width=frame_width,
-        frame_height=frame_height,
-        saliency_resolution_ratio=saliency_resolution_ratio,
-        kde_bandwidth=kde_bandwidth,
-        use_fixations=use_fixations,
-        use_interpolated=use_interpolated,
-    )
-    session2_frame = session2_frame[..., ::-1]
 
-    plt.figure(figsize=(13, 4))
-    plt.suptitle(f"Global saliency map of experiment {experiment_id}, sequence {sequence_id}{f", participants {" ".join([str(pid) for pid in participant_ids])}" if participant_ids else ''}")
-    plt.subplot(1, 2, 1)
-    plt.imshow(session1_frame)
-    plt.title("Session 1")
-    plt.axis("off")
-    plt.subplot(1, 2, 2)
-    plt.imshow(session2_frame)
-    plt.title("Session 2")
+    frame = get_saliency_global(
+        experiment_ids=experiment_ids,
+        session_ids=session_ids,
+        participant_ids=participant_ids,
+        sequence_ids=sequence_ids,
+        frame_width=frame_width,
+        frame_height=frame_height,
+        saliency_resolution_ratio=saliency_resolution_ratio,
+        kde_bandwidth=kde_bandwidth,
+        use_fixations=use_fixations,
+        use_interpolated=use_interpolated,
+    )
+    frame = frame[..., ::-1]
+
+    plt.figure(figsize=(10, 5))
+    participants_str = (
+        "all participants"
+        if participant_ids is None
+        else f"participant(s) {', '.join(map(str, participant_ids))}"
+    )
+    experiment_str = (
+        f"all experiments"
+        if experiment_ids is None
+        else f"experiment(s) {', '.join(map(str, experiment_ids))}"
+    )
+    session_str = (
+        f"all sessions"
+        if session_ids is None
+        else f"session(s) {', '.join(map(str, session_ids))}"
+    )
+    sequence_str = (
+        f"all sequences"
+        if sequence_ids is None
+        else f"sequence(s) {', '.join(map(str, sequence_ids))}"
+    )
+    plt.suptitle(
+        f"Global saliency map of {participants_str} for {', '.join([experiment_str, session_str, sequence_str])}",
+    )
+    plt.imshow(frame)
     plt.axis("off")
     plt.tight_layout()
     plt.savefig(output_file_path)
     plt.close()
 
     print("✅ Global saliency plot generated.")
+
 
 def parse_arguments() -> argparse.Namespace:
     """
@@ -182,20 +221,22 @@ def parse_arguments() -> argparse.Namespace:
     Returns:
         argparse.Namespace: The command line arguments.
     """
-    parser = argparse.ArgumentParser(description="Visualize gaze saliency.")
+    parser = argparse.ArgumentParser(description="Visualize global saliency map.")
     parser.add_argument(
-        "--experiment-id",
+        "--experiment-ids",
         "-e",
         type=int,
-        required=True,
+        nargs="+",
+        default=None,
         help="The experiment ID.",
     )
     parser.add_argument(
-        "--sequence-id",
-        "-sq",
+        "--session-ids",
+        "-se",
         type=int,
-        required=True,
-        help="The sequence ID.",
+        nargs="+",
+        default=None,
+        help="The session ID.",
     )
     parser.add_argument(
         "--participant-ids",
@@ -204,6 +245,14 @@ def parse_arguments() -> argparse.Namespace:
         nargs="+",
         default=None,
         help="The participant IDs.",
+    )
+    parser.add_argument(
+        "--sequence-ids",
+        "-sq",
+        type=int,
+        nargs="+",
+        default=None,
+        help="The sequence ID.",
     )
     parser.add_argument(
         "--output-file-path",
@@ -244,7 +293,7 @@ def parse_arguments() -> argparse.Namespace:
         "--use-fixations",
         "-f",
         action="store_true",
-        help="Use fixations instead of gaze points.",
+        help="Whether to use fixations instead of gaze points.",
     )
     parser.add_argument(
         "--use-interpolated",
@@ -258,12 +307,13 @@ def parse_arguments() -> argparse.Namespace:
 
 def main() -> None:
     """
-    Main function for visualizing eye tracking data as a global saliency map showing all collected gaze points.
+    Main function for visualizing data as a global saliency map showing all collected points.
     """
     args = parse_arguments()
-    experiment_id = args.experiment_id
+    experiment_ids = args.experiment_ids
+    session_ids = args.session_ids
     participant_ids = args.participant_ids
-    sequence_id = args.sequence_id
+    sequence_ids = args.sequence_ids
     output_file_path = args.output_file_path
     frame_width = args.frame_width
     frame_height = args.frame_height
@@ -272,10 +322,11 @@ def main() -> None:
     use_fixations = args.use_fixations
     use_interpolated = args.use_interpolated
 
-    visualize_gaze_saliency_global(
-        experiment_id=experiment_id,
+    visualize_saliency_global(
+        experiment_ids=experiment_ids,
+        session_ids=session_ids,
         participant_ids=participant_ids,
-        sequence_id=sequence_id,
+        sequence_ids=sequence_ids,
         output_file_path=output_file_path,
         frame_width=frame_width,
         frame_height=frame_height,

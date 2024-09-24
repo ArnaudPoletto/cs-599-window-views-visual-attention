@@ -23,10 +23,10 @@ SALIENCY_COLORMAP = cv2.COLORMAP_HOT
 
 
 def get_grouped_processed_data(
-    experiment_id: int,
-    session_id: int,
+    experiment_ids: List[int] | None,
+    session_ids: List[int] | None,
     participant_ids: List[int] | None,
-    sequence_id: int,
+    sequence_ids: List[int] | None,
     fps: int,
     interpolated: bool,
 ) -> List[pd.DataFrame]:
@@ -34,10 +34,10 @@ def get_grouped_processed_data(
     Get the eye tracking data grouped by single sequence experiment.
 
     Args:
-        experiment_id (int): The experiment ID.
-        session_id (int): The session ID.
+        experiment_id (List[int] | None): The experiment ID.
+        session_id (List[int] | None): The session ID.
         participant_ids (List[int] | None): The participant IDs.
-        sequence_id (int): The sequence ID.
+        sequence_id (List[int] | None): The sequence ID.
         fps (int): The frames per second.
         interpolated (bool): Whether to return the interpolated data.
 
@@ -47,16 +47,20 @@ def get_grouped_processed_data(
     Returns:
         List[pd.DataFrame]: The eye tracking data grouped by single sequence experiment.
     """
+    participants_str = "all participants" if participant_ids is None else f"participant(s) {', '.join(map(str, participant_ids))}"
+    experiment_str = f"all experiments" if experiment_ids is None else f"experiment(s) {', '.join(map(str, experiment_ids))}"
+    session_str = f"all sessions" if session_ids is None else f"session(s) {', '.join(map(str, session_ids))}"
+    sequence_str = f"all sequences" if sequence_ids is None else f"sequence(s) {', '.join(map(str, sequence_ids))}"
     print(
-        f"⌛ Getting eye tracking data of {'all' if participant_ids is None else len(participant_ids)} participant(s) for experiment {experiment_id}, session {session_id}, and sequence {sequence_id}..."
+        f"⌛ Getting eye tracking data of {participants_str} for {", ".join([experiment_str, session_str, sequence_str])}..."
     )
 
     # Get data and group by single sequence experiment
     data = get_eye_tracking_data(
-        experiment_id=experiment_id,
-        session_id=session_id,
+        experiment_ids=experiment_ids,
+        session_ids=session_ids,
         participant_ids=participant_ids,
-        sequence_ids=[sequence_id],
+        sequence_ids=sequence_ids,
         interpolated=interpolated,
     )
     data = with_time_since_start_column(data)
@@ -65,7 +69,7 @@ def get_grouped_processed_data(
 
     if not groups:
         raise ValueError(
-            f"❌ No data found for experiment {experiment_id}, session {session_id}, and participant(s) {participant_ids}."
+            f"❌ No data found for experiment(s) {experiment_ids}, session(s) {session_ids}, and participant(s) {participant_ids}."
         )
 
     # Add frame number
@@ -82,10 +86,10 @@ def get_grouped_processed_data(
 
 
 def get_grouped_fixation_data(
-    experiment_id: int,
-    session_id: int,
+    experiment_ids: List[int] | None,
+    session_ids: List[int] | None,
     participant_ids: List[int] | None,
-    sequence_id: int,
+    sequence_ids: List[int] | None,
     fps: int,
     processed_groups: List[pd.DataFrame],
 ) -> List[pd.DataFrame]:
@@ -108,10 +112,10 @@ def get_grouped_fixation_data(
     """
     # Get data and group by single sequence experiment
     data = get_eye_tracking_data(
-        experiment_id=experiment_id,
-        session_id=session_id,
+        experiment_ids=experiment_ids,
+        session_ids=session_ids,
         participant_ids=participant_ids,
-        sequence_ids=[sequence_id],
+        sequence_ids=sequence_ids,
         fixation=True,
     )
     data = with_time_since_start_end_column(
@@ -122,7 +126,7 @@ def get_grouped_fixation_data(
 
     if not groups:
         raise ValueError(
-            f"❌ No data found for experiment {experiment_id}, session {session_id}, and participant(s) {participant_ids}."
+            f"❌ No data found for experiment(s) {experiment_ids}, session(s) {session_ids}, and participant(s) {participant_ids}."
         )
 
     # Add start and end frame numbers
@@ -148,6 +152,7 @@ def get_background(
     sequence_id: int,
     frame_width: int,
     frame_height: int,
+    only_first_frame: bool = False,
 ) -> Tuple[np.ndarray | List[np.ndarray], float | None]:
     """
     Get background for the given experiment, session, and sequence.
@@ -158,6 +163,7 @@ def get_background(
         sequence_id (int): The sequence ID.
         frame_width (int): The frame width.
         frame_height (int): The frame height.
+        only_first_frame (bool, optional): Whether to return only the first frame of the video. Defaults to False.
     """
     print(
         f"⌛ Getting background for experiment {experiment_id}, session {session_id}, and sequence {sequence_id}..."
@@ -186,12 +192,18 @@ def get_background(
         while True:
             ret, frame = video_capture.read()
 
-            if not ret:
+            # Break if only the first frame is requested and it is already loaded
+            # or if the video is over
+            if not ret or (only_first_frame and background):
                 break
 
             frame = cv2.resize(frame, (frame_width, frame_height))
             background.append(frame)
         video_capture.release()
+
+        # Take only the first frame if requested
+        if only_first_frame:
+            background = background[0]
 
     print("✅ Background loaded.")
 
@@ -227,7 +239,7 @@ def get_background_frame(
     return frame
 
 
-def draw_gaze_saliency(
+def draw_saliency(
     coordinates: List[Tuple[float, float]],
     frame: np.ndarray,
     frame_width: int,
@@ -271,7 +283,7 @@ def draw_gaze_saliency(
         np.linspace(0, saliency_height - 1, saliency_height),
     )
     grid_sample = np.vstack([x_grid.ravel(), y_grid.ravel()]).T
-    kde = KernelDensity(bandwidth=kde_bandwidth, kernel="gaussian").fit(coordinates)
+    kde = KernelDensity(bandwidth=kde_bandwidth, kernel="gaussian")
     kde.fit(coordinates)
     kde_scores = kde.score_samples(grid_sample)
     kde_density = np.exp(kde_scores).reshape(saliency_height, saliency_width)

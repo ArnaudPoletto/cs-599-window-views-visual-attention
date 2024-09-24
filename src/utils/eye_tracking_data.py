@@ -17,8 +17,8 @@ N_NANOSECONDS_IN_SECOND = 1e9  # Number of nanoseconds in a second
 
 
 def get_eye_tracking_data(
-    experiment_id: int | None = None,
-    session_id: int | None = None,
+    experiment_ids: List[int] | None = None,
+    session_ids: List[int] | None = None,
     participant_ids: List[int] | None = None,
     sequence_ids: List[int] | None = None,
     interpolated: bool = False,
@@ -28,22 +28,23 @@ def get_eye_tracking_data(
     Get eye tracking data for a specific experiment, session, and participant. If no id is provided, all data is returned.
 
     Args:
-        experiment_id (int | None, optional): The experiment id. Defaults to None.
-        session_id (int | None, optional): The session id. Defaults to None.
+        experiment_ids (List[int] | None, optional): The experiment id. Defaults to None.
+        session_ids (List[int] | None, optional): The session id. Defaults to None.
         participant_ids (List[int] | None, optional): The participant id. Defaults to None.
+        sequence_ids (List[int] | None, optional): The sequence id. Defaults to None.
         interpolated (bool, optional): Whether to return the interpolated data. Defaults to False.
         fixation (bool, optional): Whether to return the fixation data. Defaults to False.
 
     Raises:
-        ValueError: If the experiment id is not 1 or 2.
-        ValueError: If the session id is not 1 or 2.
+        ValueError: If the experiment ids are not 1 or 2.
+        ValueError: If the session ids are not 1 or 2.
         ValueError: If both interpolated and fixation data are requested.
         ValueError: If no data is found for the provided ids.
     """
-    if experiment_id is not None and experiment_id not in [1, 2]:
-        raise ValueError(f"❌ Invalid experiment id: {experiment_id}, must be 1 or 2.")
-    if session_id is not None and session_id not in [1, 2]:
-        raise ValueError(f"❌ Invalid session id: {session_id}, must be 1 or 2.")
+    if experiment_ids is not None and set(experiment_ids) - {1, 2}:
+        raise ValueError(f"❌ Invalid experiment ids: {experiment_ids}, must contain 1 or 2.")
+    if session_ids is not None and set(session_ids) - {1, 2}:
+        raise ValueError(f"❌ Invalid session ids: {session_ids}, must contain 1 or 2.")
     if interpolated and fixation:
         raise ValueError("❌ Either interpolated or fixation data can be returned, not both.")
 
@@ -51,10 +52,10 @@ def get_eye_tracking_data(
     data_file_path = f"{PROCESSED_EYE_TRACKING_DATA_PATH}/{data_file_prefix}{PROCESSED_EYE_TRACKING_FILE_NAME}"
     data = pd.read_csv(data_file_path)
 
-    if experiment_id is not None:
-        data = data[data["ExperimentId"] == experiment_id]
-    if session_id is not None:
-        data = data[data["SessionId"] == session_id]
+    if experiment_ids is not None:
+        data = data[data["ExperimentId"].isin(experiment_ids)]
+    if session_ids is not None:
+        data = data[data["SessionId"].isin(session_ids)]
     if participant_ids is not None:
         data = data[data["ParticipantId"].isin(participant_ids)]
     if sequence_ids is not None:
@@ -171,9 +172,10 @@ def with_time_since_last_column(
     groups = [data.get_group(group) for group in data.groups]
 
     for i, group in enumerate(groups):
+        timestamp_column = "Timestamp_ns" if "Timestamp_ns" in group.columns else "StartTimestamp_ns"
         group = group.copy()
-        group = group.sort_values("Timestamp_ns")
-        time_since_last = group["Timestamp_ns"].diff().fillna(0)
+        group = group.sort_values(timestamp_column)
+        time_since_last = group[timestamp_column].diff().fillna(0)
         group["TimeSinceLast_ns"] = time_since_last
         groups[i] = group
     data = pd.concat(groups)
@@ -197,8 +199,9 @@ def with_distance_since_last_column(
     groups = [data.get_group(group) for group in data.groups]
 
     for i, group in enumerate(groups):
+        timestamp_column = "Timestamp_ns" if "Timestamp_ns" in group.columns else "StartTimestamp_ns"
         group = group.copy()
-        group = group.sort_values("Timestamp_ns")
+        group = group.sort_values(timestamp_column)
         gaze_x_diff = group["X_px"].diff().fillna(0)
         gaze_y_diff = group["Y_px"].diff().fillna(0)
         distance_since_last = np.sqrt(gaze_x_diff**2 + gaze_y_diff**2)

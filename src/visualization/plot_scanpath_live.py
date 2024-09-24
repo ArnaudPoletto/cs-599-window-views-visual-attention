@@ -178,10 +178,10 @@ def draw_gaze_scanpath_live(
 
 
 def visualize_gaze_scanpath_live(
-    experiment_id: int,
-    session_id: int,
+    experiment_ids: List[int] | None,
+    session_ids: List[int] | None,
     participant_ids: List[int] | None,
-    sequence_id: int,
+    sequence_ids: List[int] | None,
     output_file_path: str,
     frame_width: int,
     frame_height: int,
@@ -195,10 +195,10 @@ def visualize_gaze_scanpath_live(
     Visualize gaze live sequence for the given experiment, session, participant(s), and sequence.
 
     Args:
-        experiment_id (int): The experiment ID.
-        session_id (int): The session ID.
+        experiment_ids (List[int] | None): The experiment IDs.
+        session_ids (List[int] | None): The session IDs.
         participant_ids (List[int] | None): The participant IDs.
-        sequence_id (int): The sequence ID.
+        sequence_ids (vList[int] | None): The sequence IDs.
         output_file_path (str): The output file path.
         frame_width (int): The frame width.
         frame_height (int): The frame height.
@@ -210,31 +210,46 @@ def visualize_gaze_scanpath_live(
     """
     # Get eye tracking data
     processed_groups = get_grouped_processed_data(
-        experiment_id=experiment_id,
-        session_id=session_id,
+        experiment_ids=experiment_ids,
+        session_ids=session_ids,
         participant_ids=participant_ids,
-        sequence_id=sequence_id,
+        sequence_ids=sequence_ids,
         fps=fps,
         interpolated=use_interpolated,
     )
 
     fixation_groups = get_grouped_fixation_data(
-        experiment_id=experiment_id,
-        session_id=session_id,
+        experiment_ids=experiment_ids,
+        session_ids=session_ids,
         participant_ids=participant_ids,
-        sequence_id=sequence_id,
+        sequence_ids=sequence_ids,
         fps=fps,
         processed_groups=processed_groups,
     )
 
     # Get background image or video
-    background, background_fps = get_background(
-        experiment_id=experiment_id,
-        session_id=session_id,
-        sequence_id=sequence_id,
-        frame_width=frame_width,
-        frame_height=frame_height,
-    )
+    # If multiple experiments, sessions, or sequences are provided, use a black background
+    if (
+        experiment_ids is not None
+        and len(experiment_ids) == 1
+        and session_ids is not None
+        and len(session_ids) == 1
+        and sequence_ids is not None
+        and len(sequence_ids) == 1
+    ):
+        experiment_id = experiment_ids[0]
+        session_id = session_ids[0]
+        sequence_id = sequence_ids[0]
+        background, background_fps = get_background(
+            experiment_id=experiment_id,
+            session_id=session_id,
+            sequence_id=sequence_id,
+            frame_width=frame_width,
+            frame_height=frame_height,
+            only_first_frame=False,
+        )
+    else:
+        background = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
 
     # Initialize video writer
     fourcc = cv2.VideoWriter_fourcc("a", "v", "c", "1")
@@ -311,17 +326,19 @@ def parse_arguments() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description="Visualize gaze sequence.")
     parser.add_argument(
-        "--experiment-id",
+        "--experiment-ids",
         "-e",
         type=int,
-        required=True,
+        nargs="+",
+        default=None,
         help="The experiment ID.",
     )
     parser.add_argument(
-        "--session-id",
+        "--session-ids",
         "-se",
         type=int,
-        required=True,
+        nargs="+",
+        default=None,
         help="The session ID.",
     )
     parser.add_argument(
@@ -333,10 +350,11 @@ def parse_arguments() -> argparse.Namespace:
         help="The participant IDs.",
     )
     parser.add_argument(
-        "--sequence-id",
+        "--sequence-ids",
         "-sq",
         type=int,
-        required=True,
+        nargs="+",
+        default=None,
         help="The sequence ID.",
     )
     parser.add_argument(
@@ -402,10 +420,10 @@ def main() -> None:
     Main function for visualizing gaze data as a live sequence showing the gaze scanpath.
     """
     args = parse_arguments()
-    experiment_id = args.experiment_id
-    session_id = args.session_id
+    experiment_ids = args.experiment_ids
+    session_ids = args.session_ids
     participant_ids = args.participant_ids
-    sequence_id = args.sequence_id
+    sequence_ids = args.sequence_ids
     output_file_path = args.output_file_path
     frame_width = args.frame_width
     frame_height = args.frame_height
@@ -416,10 +434,10 @@ def main() -> None:
     use_interpolated = args.use_interpolated
 
     visualize_gaze_scanpath_live(
-        experiment_id=experiment_id,
-        session_id=session_id,
+        experiment_ids=experiment_ids,
+        session_ids=session_ids,
         participant_ids=participant_ids,
-        sequence_id=sequence_id,
+        sequence_ids=sequence_ids,
         output_file_path=output_file_path,
         frame_width=frame_width,
         frame_height=frame_height,

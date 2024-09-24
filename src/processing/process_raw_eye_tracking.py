@@ -24,8 +24,8 @@ from src.config import (
 OUTLIER_VALUES = (3000, 1500)
 MAX_TIME_SINCE_START_SECONDS = 120
 RESAMPLING_RATE = "50ms"
-DISPERSION_THRESHOLD_PX = 50.0
-DURATION_THRESHOLD_NS = 100.0 * 1e6  # 100 ms in nanoseconds
+DISPERSION_THRESHOLD_PX = 100.0
+DURATION_THRESHOLD_NS = 200.0 * 1e6  # 100 ms in nanoseconds
 N_HNANOSECONDS_IN_NANOSECOND = 100  # Number of hundred nanoseconds in a nanosecond
 N_NANOSECONDS_IN_SECOND = 1e9  # Number of nanoseconds in a second
 
