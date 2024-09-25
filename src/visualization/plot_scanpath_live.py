@@ -89,9 +89,10 @@ def get_fixations(
     """
     fixations = []
     for group in groups:
-        group_fixations = group[(group["StartFrameNumber"] <= curr_frame) & (curr_frame <= group["EndFrameNumber"])][
-            ["X_sc", "Y_sc"]
-        ].values
+        group_fixations = group[
+            (group["StartFrameNumber"] <= curr_frame)
+            & (curr_frame <= group["EndFrameNumber"])
+        ][["X_sc", "Y_sc"]].values
         fixations.extend(group_fixations)
 
     return fixations
@@ -182,6 +183,7 @@ def visualize_gaze_scanpath_live(
     session_ids: List[int] | None,
     participant_ids: List[int] | None,
     sequence_ids: List[int] | None,
+    set_ids: List[int] | None,
     output_file_path: str,
     frame_width: int,
     frame_height: int,
@@ -199,6 +201,7 @@ def visualize_gaze_scanpath_live(
         session_ids (List[int] | None): The session IDs.
         participant_ids (List[int] | None): The participant IDs.
         sequence_ids (vList[int] | None): The sequence IDs.
+        set_ids (List[int] | None): The set IDs.
         output_file_path (str): The output file path.
         frame_width (int): The frame width.
         frame_height (int): The frame height.
@@ -214,6 +217,7 @@ def visualize_gaze_scanpath_live(
         session_ids=session_ids,
         participant_ids=participant_ids,
         sequence_ids=sequence_ids,
+        set_ids=set_ids,
         fps=fps,
         interpolated=use_interpolated,
     )
@@ -223,6 +227,7 @@ def visualize_gaze_scanpath_live(
         session_ids=session_ids,
         participant_ids=participant_ids,
         sequence_ids=sequence_ids,
+        set_ids=set_ids,
         fps=fps,
         processed_groups=processed_groups,
     )
@@ -232,18 +237,18 @@ def visualize_gaze_scanpath_live(
     if (
         experiment_ids is not None
         and len(experiment_ids) == 1
-        and session_ids is not None
-        and len(session_ids) == 1
         and sequence_ids is not None
         and len(sequence_ids) == 1
+        and set_ids is not None
+        and len(set_ids) == 1
     ):
         experiment_id = experiment_ids[0]
-        session_id = session_ids[0]
         sequence_id = sequence_ids[0]
+        set_id = set_ids[0]
         background, background_fps = get_background(
             experiment_id=experiment_id,
-            session_id=session_id,
             sequence_id=sequence_id,
+            set_id=set_id,
             frame_width=frame_width,
             frame_height=frame_height,
             only_first_frame=False,
@@ -258,7 +263,9 @@ def visualize_gaze_scanpath_live(
     curr_frame = 0
     next_frames = [group["FrameNumber"].iloc[0] for group in processed_groups]
     max_frame = max([group["FrameNumber"].max() for group in processed_groups])
-    coordinates_buffers = [CoordinatesBuffer(max_length=trail_length) for _ in processed_groups]
+    coordinates_buffers = [
+        CoordinatesBuffer(max_length=trail_length) for _ in processed_groups
+    ]
     fixations = []
     bar = tqdm(total=max_frame, desc="⌛ Generating gaze video...", unit="frames")
     while curr_frame < max_frame:
@@ -300,9 +307,10 @@ def visualize_gaze_scanpath_live(
             frame=frame,
             curr_frame=curr_frame,
             max_frame=max_frame,
-            experiment_id=experiment_id,
-            session_id=session_id,
-            sequence_id=sequence_id,
+            experiment_ids=experiment_ids,
+            session_ids=session_ids,
+            sequence_ids=sequence_ids,
+            set_ids=set_ids,
             frame_width=frame_width,
         )
 
@@ -356,6 +364,14 @@ def parse_arguments() -> argparse.Namespace:
         nargs="+",
         default=None,
         help="The sequence ID.",
+    )
+    parser.add_argument(
+        "--set-ids",
+        "-s",
+        type=int,
+        nargs="+",
+        default=None,
+        help="The set IDs.",
     )
     parser.add_argument(
         "--output-file-path",
@@ -424,6 +440,7 @@ def main() -> None:
     session_ids = args.session_ids
     participant_ids = args.participant_ids
     sequence_ids = args.sequence_ids
+    set_ids = args.set_ids
     output_file_path = args.output_file_path
     frame_width = args.frame_width
     frame_height = args.frame_height
@@ -438,6 +455,7 @@ def main() -> None:
         session_ids=session_ids,
         participant_ids=participant_ids,
         sequence_ids=sequence_ids,
+        set_ids=set_ids,
         output_file_path=output_file_path,
         frame_width=frame_width,
         frame_height=frame_height,

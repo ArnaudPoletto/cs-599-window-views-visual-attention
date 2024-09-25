@@ -38,7 +38,7 @@ def update_group_coordinates(
 ) -> Tuple[List[Tuple[float, float]], List[int]]:
     """
     Get the current gaze coordinates.
-    
+
     Args:
         groups (List[pd.DataFrame]): The grouped eye tracking data.
         next_frames (List[int]): The next frames.
@@ -46,14 +46,17 @@ def update_group_coordinates(
         max_frame (int): The maximum frame.
         coordinates (List[Tuple[float, float]]): The current gaze coordinates.
         use_fixations (bool): Use fixations instead of gaze points.
-        
+
     Returns:
         List[Tuple[float, float]]: The current gaze coordinates.
     """
     for i, group in enumerate(groups):
         # For fixations, always get the current group coordinates
         if use_fixations:
-            curr_group_coordinates = group[(group["StartFrameNumber"] <= curr_frame) & (curr_frame <= group["EndFrameNumber"])][["X_sc", "Y_sc"]].values
+            curr_group_coordinates = group[
+                (group["StartFrameNumber"] <= curr_frame)
+                & (curr_frame <= group["EndFrameNumber"])
+            ][["X_sc", "Y_sc"]].values
             group_coordinates[i] = curr_group_coordinates
             continue
 
@@ -61,7 +64,9 @@ def update_group_coordinates(
         next_frame = next_frames[i]
         if curr_frame == next_frame:
             # Update current gaze coordinates
-            curr_group_coordinates = group[group["FrameNumber"] == curr_frame][["X_sc", "Y_sc"]].values
+            curr_group_coordinates = group[group["FrameNumber"] == curr_frame][
+                ["X_sc", "Y_sc"]
+            ].values
             group_coordinates[i] = curr_group_coordinates
 
             # Update next frame
@@ -82,6 +87,7 @@ def visualize_saliency_live(
     session_ids: List[int] | None,
     participant_ids: List[int] | None,
     sequence_ids: List[int] | None,
+    set_ids: List[int] | None,
     output_file_path: str,
     frame_width: int,
     frame_height: int,
@@ -93,12 +99,13 @@ def visualize_saliency_live(
 ) -> None:
     """
     Visualize gaze saliency for the given experiment, session, participant(s), and sequence.
-    
+
     Args:
         experiment_ids (List[int] | None): The experiment IDs.
         session_ids (List[int] | None): The session IDs.
         participant_ids (List[int] | None): The participant IDs.
         sequence_ids (List[int] | None): The sequence IDs.
+        set_ids (List[int] | None): The set IDs.
         output_file_path (str): The output file path.
         frame_width (int): The frame width.
         frame_height (int): The frame height.
@@ -113,23 +120,25 @@ def visualize_saliency_live(
     """
     if use_fixations and use_interpolated:
         raise ValueError("❌ Cannot use both fixations and interpolated data.")
-    
+
     # Get gaze data
     processed_groups = get_grouped_processed_data(
-            experiment_ids=experiment_ids,
-            session_ids=session_ids,
-            participant_ids=participant_ids,
-            sequence_ids=sequence_ids,
-            fps=fps,
-            interpolated=use_interpolated,
-        )
-    
+        experiment_ids=experiment_ids,
+        session_ids=session_ids,
+        participant_ids=participant_ids,
+        sequence_ids=sequence_ids,
+        set_ids=set_ids,
+        fps=fps,
+        interpolated=use_interpolated,
+    )
+
     if use_fixations:
         groups = get_grouped_fixation_data(
             experiment_ids=experiment_ids,
             session_ids=session_ids,
             participant_ids=participant_ids,
             sequence_ids=sequence_ids,
+            set_ids=set_ids,
             fps=fps,
             processed_groups=processed_groups,
         )
@@ -141,18 +150,18 @@ def visualize_saliency_live(
     if (
         experiment_ids is not None
         and len(experiment_ids) == 1
-        and session_ids is not None
-        and len(session_ids) == 1
         and sequence_ids is not None
         and len(sequence_ids) == 1
+        and set_ids is not None
+        and len(set_ids) == 1
     ):
         experiment_id = experiment_ids[0]
-        session_id = session_ids[0]
         sequence_id = sequence_ids[0]
+        set_id = set_ids[0]
         background, background_fps = get_background(
             experiment_id=experiment_id,
-            session_id=session_id,
             sequence_id=sequence_id,
+            set_id=set_id,
             frame_width=frame_width,
             frame_height=frame_height,
             only_first_frame=False,
@@ -166,7 +175,7 @@ def visualize_saliency_live(
 
     curr_frame = 0
     if use_fixations:
-        next_frames = None # Not used for fixations
+        next_frames = None  # Not used for fixations
         max_frame = max([group["EndFrameNumber"].max() for group in groups])
     else:
         next_frames = [group["FrameNumber"].iloc[0] for group in groups]
@@ -194,7 +203,9 @@ def visualize_saliency_live(
         )
 
         # Draw gaze coordinates and information on frame
-        coordinates = [coord for group_coords in group_coordinates for coord in group_coords]
+        coordinates = [
+            coord for group_coords in group_coordinates for coord in group_coords
+        ]
         saliency_width = int(frame_width * saliency_resolution_ratio)
         saliency_height = int(frame_height * saliency_resolution_ratio)
         frame = draw_saliency(
@@ -211,9 +222,10 @@ def visualize_saliency_live(
             frame=frame,
             curr_frame=curr_frame,
             max_frame=max_frame,
-            experiment_id=experiment_id,
-            session_id=session_id,
-            sequence_id=sequence_id,
+            experiment_ids=experiment_ids,
+            session_ids=session_ids,
+            sequence_id=sequence_ids,
+            set_ids=set_ids,
             frame_width=frame_width,
         )
 
@@ -231,7 +243,7 @@ def visualize_saliency_live(
 def parse_arguments() -> argparse.Namespace:
     """
     Parse command line arguments.
-    
+
     Returns:
         argparse.Namespace: The command line arguments.
     """
@@ -267,6 +279,14 @@ def parse_arguments() -> argparse.Namespace:
         nargs="+",
         default=None,
         help="The sequence ID.",
+    )
+    parser.add_argument(
+        "--set-ids",
+        "-s",
+        type=int,
+        nargs="+",
+        default=None,
+        help="The set IDs.",
     )
     parser.add_argument(
         "--output-file-path",
@@ -324,6 +344,7 @@ def parse_arguments() -> argparse.Namespace:
 
     return parser.parse_args()
 
+
 def main() -> None:
     """
     Main function for visualizing eye tracking data as a live saliency map showing gaze points in real-time.
@@ -333,6 +354,7 @@ def main() -> None:
     session_ids = args.session_ids
     participant_ids = args.participant_ids
     sequence_ids = args.sequence_ids
+    set_ids = args.set_ids
     output_file_path = args.output_file_path
     frame_width = args.frame_width
     frame_height = args.frame_height
@@ -347,7 +369,8 @@ def main() -> None:
         session_ids=session_ids,
         participant_ids=participant_ids,
         sequence_ids=sequence_ids,
-        output_file_path=output_file_path, 
+        set_ids=set_ids,
+        output_file_path=output_file_path,
         frame_width=frame_width,
         frame_height=frame_height,
         fps=fps,
@@ -356,6 +379,7 @@ def main() -> None:
         use_fixations=use_fixations,
         use_interpolated=use_interpolated,
     )
+
 
 if __name__ == "__main__":
     main()

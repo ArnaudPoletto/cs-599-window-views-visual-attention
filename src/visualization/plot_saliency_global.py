@@ -46,6 +46,7 @@ def get_saliency_global(
     session_ids: List[int] | None,
     participant_ids: List[int] | None,
     sequence_ids: List[int] | None,
+    set_ids: List[int] | None,
     frame_width: int,
     frame_height: int,
     saliency_resolution_ratio: float,
@@ -61,6 +62,7 @@ def get_saliency_global(
         session_ids (List[int] | None): The session ID.
         participant_ids (List[int] | None): The participant ID.
         sequence_ids (List[int] | None): The sequence ID.
+        set_ids (List[int] | None): The set ID.
         frame_width (int): The frame width.
         frame_height (int): The frame height.
         saliency_resolution_ratio (float): The saliency resolution ratio.
@@ -77,6 +79,7 @@ def get_saliency_global(
         session_ids=session_ids,
         participant_ids=participant_ids,
         sequence_ids=sequence_ids,
+        set_ids=set_ids,
         fps=1,
         interpolated=use_interpolated,
     )
@@ -86,6 +89,7 @@ def get_saliency_global(
             session_ids=session_ids,
             participant_ids=participant_ids,
             sequence_ids=sequence_ids,
+            set_ids=set_ids,
             fps=1,
             processed_groups=processed_groups,
         )
@@ -97,18 +101,18 @@ def get_saliency_global(
     if (
         experiment_ids is not None
         and len(experiment_ids) == 1
-        and session_ids is not None
-        and len(session_ids) == 1
         and sequence_ids is not None
         and len(sequence_ids) == 1
+        and set_ids is not None
+        and len(set_ids) == 1
     ):
         experiment_id = experiment_ids[0]
-        session_id = session_ids[0]
         sequence_id = sequence_ids[0]
+        set_id = set_ids[0]
         background, _ = get_background(
             experiment_id=experiment_id,
-            session_id=session_id,
             sequence_id=sequence_id,
+            set_id=set_id,
             frame_width=frame_width,
             frame_height=frame_height,
             only_first_frame=True,
@@ -255,6 +259,14 @@ def parse_arguments() -> argparse.Namespace:
         help="The sequence ID.",
     )
     parser.add_argument(
+        "--set-ids",
+        "-s",
+        type=int,
+        nargs="+",
+        default=None,
+        help="The set IDs.",
+    )
+    parser.add_argument(
         "--output-file-path",
         "-out",
         type=str,
@@ -314,6 +326,7 @@ def main() -> None:
     session_ids = args.session_ids
     participant_ids = args.participant_ids
     sequence_ids = args.sequence_ids
+    set_ids = args.set_ids
     output_file_path = args.output_file_path
     frame_width = args.frame_width
     frame_height = args.frame_height
@@ -327,6 +340,7 @@ def main() -> None:
         session_ids=session_ids,
         participant_ids=participant_ids,
         sequence_ids=sequence_ids,
+        set_ids=set_ids,
         output_file_path=output_file_path,
         frame_width=frame_width,
         frame_height=frame_height,

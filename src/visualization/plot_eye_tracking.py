@@ -27,6 +27,7 @@ def get_grouped_processed_data(
     session_ids: List[int] | None,
     participant_ids: List[int] | None,
     sequence_ids: List[int] | None,
+    set_ids: List[int] | None,
     fps: int,
     interpolated: bool,
 ) -> List[pd.DataFrame]:
@@ -47,12 +48,31 @@ def get_grouped_processed_data(
     Returns:
         List[pd.DataFrame]: The eye tracking data grouped by single sequence experiment.
     """
-    participants_str = "all participants" if participant_ids is None else f"participant(s) {', '.join(map(str, participant_ids))}"
-    experiment_str = f"all experiments" if experiment_ids is None else f"experiment(s) {', '.join(map(str, experiment_ids))}"
-    session_str = f"all sessions" if session_ids is None else f"session(s) {', '.join(map(str, session_ids))}"
-    sequence_str = f"all sequences" if sequence_ids is None else f"sequence(s) {', '.join(map(str, sequence_ids))}"
+    participants_str = (
+        "all participants"
+        if participant_ids is None
+        else f"participant(s) {', '.join(map(str, participant_ids))}"
+    )
+    experiment_str = (
+        f"all experiments"
+        if experiment_ids is None
+        else f"experiment(s) {', '.join(map(str, experiment_ids))}"
+    )
+    session_str = (
+        f"all sessions"
+        if session_ids is None
+        else f"session(s) {', '.join(map(str, session_ids))}"
+    )
+    sequence_str = (
+        f"all sequences"
+        if sequence_ids is None
+        else f"sequence(s) {', '.join(map(str, sequence_ids))}"
+    )
+    set_str = (
+        f"all sets" if set_ids is None else f"set(s) {', '.join(map(str, set_ids))}"
+    )
     print(
-        f"⌛ Getting eye tracking data of {participants_str} for {", ".join([experiment_str, session_str, sequence_str])}..."
+        f"⌛ Getting eye tracking data of {participants_str} for {', '.join([experiment_str, session_str, sequence_str, set_str])}..."
     )
 
     # Get data and group by single sequence experiment
@@ -61,15 +81,18 @@ def get_grouped_processed_data(
         session_ids=session_ids,
         participant_ids=participant_ids,
         sequence_ids=sequence_ids,
+        set_ids=set_ids,
         interpolated=interpolated,
     )
     data = with_time_since_start_column(data)
-    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId"])
+    data = data.groupby(
+        ["ExperimentId", "SessionId", "ParticipantId", "SequenceId", "SetId"]
+    )
     groups = [data.get_group(group) for group in data.groups]
 
     if not groups:
         raise ValueError(
-            f"❌ No data found for experiment(s) {experiment_ids}, session(s) {session_ids}, and participant(s) {participant_ids}."
+            f"❌ No data found for experiment(s) {experiment_ids}, session(s) {session_ids}, participant(s) {participant_ids}, sequence(s) {sequence_ids}, and set(s) {set_ids}."
         )
 
     # Add frame number
@@ -90,6 +113,7 @@ def get_grouped_fixation_data(
     session_ids: List[int] | None,
     participant_ids: List[int] | None,
     sequence_ids: List[int] | None,
+    set_ids: List[int] | None,
     fps: int,
     processed_groups: List[pd.DataFrame],
 ) -> List[pd.DataFrame]:
@@ -101,6 +125,7 @@ def get_grouped_fixation_data(
         session_id (int): The session ID.
         participant_ids (List[int] | None): The participant IDs.
         sequence_id (int): The sequence ID.
+        set_ids (List[int] | None): The set IDs.
         fps (int): The frames per second.
         processed_groups (List[pd.DataFrame]): The processed gaze data grouped by single sequence experiment. Used to calibrate the start and end frame numbers since the first fixation entry does not necessarily start at the beginning of the sequence.
 
@@ -116,17 +141,20 @@ def get_grouped_fixation_data(
         session_ids=session_ids,
         participant_ids=participant_ids,
         sequence_ids=sequence_ids,
+        set_ids=set_ids,
         fixation=True,
     )
     data = with_time_since_start_end_column(
         data=data, processed_groups=processed_groups
     )
-    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId"])
+    data = data.groupby(
+        ["ExperimentId", "SessionId", "ParticipantId", "SequenceId", "SetId"]
+    )
     groups = [data.get_group(group) for group in data.groups]
 
     if not groups:
         raise ValueError(
-            f"❌ No data found for experiment(s) {experiment_ids}, session(s) {session_ids}, and participant(s) {participant_ids}."
+            f"❌ No data found for experiment(s) {experiment_ids}, session(s) {session_ids}, participant(s) {participant_ids}, sequence(s) {sequence_ids}, and set(s) {set_ids}."
         )
 
     # Add start and end frame numbers
@@ -148,8 +176,8 @@ def get_grouped_fixation_data(
 
 def get_background(
     experiment_id: int,
-    session_id: int,
     sequence_id: int,
+    set_id: int,
     frame_width: int,
     frame_height: int,
     only_first_frame: bool = False,
@@ -159,20 +187,20 @@ def get_background(
 
     Args:
         experiment_id (int): The experiment ID.
-        session_id (int): The session ID.
         sequence_id (int): The sequence ID.
+        set_id (int): The set ID.
         frame_width (int): The frame width.
         frame_height (int): The frame height.
         only_first_frame (bool, optional): Whether to return only the first frame of the video. Defaults to False.
     """
     print(
-        f"⌛ Getting background for experiment {experiment_id}, session {session_id}, and sequence {sequence_id}..."
+        f"⌛ Getting background for experiment {experiment_id}, sequence {sequence_id} and set {set_id}..."
     )
 
     background_file_path = f"{SETS_PATH}/experiment{experiment_id}"
 
     # First session of the first experiment has images as background
-    if experiment_id == 1 and session_id == 1:
+    if experiment_id == 1 and set_id == 1:
         background_file_path += f"/images/scene{sequence_id}.png"
         background = cv2.imread(background_file_path)
         background = cv2.resize(background, (frame_width, frame_height))
@@ -180,11 +208,11 @@ def get_background(
     # Other sessions have videos as background
     else:
         # Get video
-        if experiment_id == 1 and session_id == 2:
+        if experiment_id == 1 and set_id == 0:
             background_file_path += f"/videos/scene{sequence_id}.mp4"
-        elif experiment_id == 2 and session_id == 1:
+        elif experiment_id == 2 and set_id == 0:
             background_file_path += f"/clear/scene{sequence_id}.mp4"
-        elif experiment_id == 2 and session_id == 2:
+        elif experiment_id == 2 and set_id == 1:
             background_file_path += f"/overcast/scene{sequence_id}.mp4"
         video_capture = cv2.VideoCapture(background_file_path)
         background_fps = video_capture.get(cv2.CAP_PROP_FPS)
@@ -305,9 +333,10 @@ def draw_information(
     frame: np.ndarray,
     curr_frame: int,
     max_frame: int,
-    experiment_id: int,
-    session_id: int,
-    sequence_id: int,
+    experiment_ids: List[int] | None,
+    session_ids: List[int] | None,
+    sequence_ids: List[int] | None,
+    set_ids: List[int] | None,
     frame_width: int,
     font: int = cv2.FONT_HERSHEY_SIMPLEX,
     font_scale: float = 0.5,
@@ -320,9 +349,10 @@ def draw_information(
         frame (np.ndarray): The frame.
         curr_frame (int): The current frame number.
         max_frame (int): The maximum frame number.
-        experiment_id (int): The experiment ID.
-        session_id (int): The session ID.
-        sequence_id (int): The sequence ID.
+        experiment_ids (List[int] | None): The experiment IDs.
+        session_ids (List[int] | None): The session IDs.
+        sequence_ids (List[int] | None): The sequence IDs.
+        set_ids (List[int] | None): The set IDs.
         frame_width (int): The frame width.
         font (int, optional): The font. Defaults to cv2.FONT_HERSHEY_SIMPLEX.
         font_scale (float, optional): The font scale. Defaults to 0.5.
@@ -333,7 +363,10 @@ def draw_information(
     """
     # Draw experiment, session, and sequence IDs
     id_text = (
-        f"Experiment {experiment_id}, Session {session_id}, Sequence {sequence_id}"
+        f"Experiment(s) {', '.join(map(str, experiment_ids))}\n"
+        f"Session(s) {', '.join(map(str, session_ids))}\n"
+        f"Sequence(s) {', '.join(map(str, sequence_ids))}\n"
+        f"Set(s) {', '.join(map(str, set_ids))}"
     )
     id_text_x = margin
     id_text_y = margin

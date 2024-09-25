@@ -94,15 +94,17 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
     data["Y_sc"] = data["GazeY"] / RAW_EYE_TRACKING_FRAME_HEIGHT
     data = data.rename(columns={"GazeX": "X_px", "GazeY": "Y_px"})
 
-    # Get experiment, session and participant ids
+    # Get experiment, session, set and participant ids
     data["ExperimentId"] = data["Id"] // 1000  # Is the thousands digit
     data["SessionId"] = data["Id"] % 10  # Is the unit digit
     data["ParticipantId"] = (data["Id"] % 1000) // 10  # Is the hundreds and tens digit
+    data["SetId"] = data["SequenceSet"]
 
     # Delete entries with invalid ids
     data = data[
         ((data["ExperimentId"] == 1) | (data["ExperimentId"] == 2))
         & ((data["SessionId"] == 1) | (data["SessionId"] == 2))
+        & ((data["SetId"] == 0) | (data["SetId"] == 1))
     ]
 
     # Change timestamp unit to nanoseconds
@@ -136,6 +138,7 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
             "SessionId": "int",
             "ParticipantId": "int",
             "SequenceId": "int",
+            "SetId": "int",
             "X_sc": "float32",
             "Y_sc": "float32",
             "X_px": "float32",
@@ -151,6 +154,7 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
             "SessionId",
             "ParticipantId",
             "SequenceId",
+            "SetId",
             "X_sc",
             "Y_sc",
             "X_px",
@@ -190,12 +194,6 @@ def get_interpolated_data(
         group = group.copy()
         group = group.set_index("DateTime")
 
-        # Get group information
-        experiment_id = group["ExperimentId"].iloc[0]
-        session_id = group["SessionId"].iloc[0]
-        participant_id = group["ParticipantId"].iloc[0]
-        sequence_id = group["SequenceId"].iloc[0]
-
         # Resample and interpolate the data
         columns_to_interpolate = ["X_sc", "Y_sc", "X_px", "Y_px"]
         resampled_group = group[columns_to_interpolate].resample(resampling_rate).mean()
@@ -203,10 +201,11 @@ def get_interpolated_data(
         interpolated_group = interpolated_group.reset_index()
 
         # Add group information
-        interpolated_group["ExperimentId"] = experiment_id
-        interpolated_group["SessionId"] = session_id
-        interpolated_group["ParticipantId"] = participant_id
-        interpolated_group["SequenceId"] = sequence_id
+        interpolated_group["ExperimentId"] = group["ExperimentId"].iloc[0]
+        interpolated_group["SessionId"] = group["SessionId"].iloc[0]
+        interpolated_group["ParticipantId"] = group["ParticipantId"].iloc[0]
+        interpolated_group["SequenceId"] = group["SequenceId"].iloc[0]
+        interpolated_group["SetId"] = group["SetId"].iloc[0]
         interpolated_group["Timestamp_ns"] = interpolated_group["DateTime"].astype(
             "int64"
         )
@@ -223,6 +222,7 @@ def get_interpolated_data(
             "SessionId": "int",
             "ParticipantId": "int",
             "SequenceId": "int",
+            "SetId": "int",
             "X_sc": "float32",
             "Y_sc": "float32",
             "X_px": "float32",
@@ -237,6 +237,7 @@ def get_interpolated_data(
             "SessionId",
             "ParticipantId",
             "SequenceId",
+            "SetId",
             "X_sc",
             "Y_sc",
             "X_px",
@@ -279,7 +280,7 @@ def get_fixation_data_from_group(
             + group["Y_px"].iloc[start_index:curr_index].max()
             - group["Y_px"].iloc[start_index:curr_index].min()
         )
-        
+
         # Define the window as a fixation if it does not exceed the dispersion threshold, and increase the size of the window
         if dispersion < dispersion_threshold_px and curr_index < len(group) - 1:
             is_fixation = True
@@ -293,6 +294,7 @@ def get_fixation_data_from_group(
                     "SessionId": group["SessionId"].iloc[start_index],
                     "ParticipantId": group["ParticipantId"].iloc[start_index],
                     "SequenceId": group["SequenceId"].iloc[start_index],
+                    "SetId": group["SetId"].iloc[start_index],
                     "X_sc": group["X_sc"].iloc[start_index:curr_index].mean(),
                     "Y_sc": group["Y_sc"].iloc[start_index:curr_index].mean(),
                     "X_px": group["X_px"].iloc[start_index:curr_index].mean(),
@@ -326,7 +328,9 @@ def get_fixation_data(
     """
     # Group the data by sequence
     data = data.copy()
-    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId"])
+    data = data.groupby(
+        ["ExperimentId", "SessionId", "ParticipantId", "SequenceId", "SetId"]
+    )
     groups = [data.get_group(group) for group in data.groups]
 
     # Iterate through the data to get fixations
@@ -345,6 +349,7 @@ def get_fixation_data(
             "SessionId": "int",
             "ParticipantId": "int",
             "SequenceId": "int",
+            "SetId": "int",
             "X_sc": "float32",
             "Y_sc": "float32",
             "X_px": "float32",
@@ -361,6 +366,7 @@ def get_fixation_data(
             "SessionId",
             "ParticipantId",
             "SequenceId",
+            "SetId",
             "X_sc",
             "Y_sc",
             "X_px",

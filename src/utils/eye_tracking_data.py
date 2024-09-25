@@ -21,6 +21,7 @@ def get_eye_tracking_data(
     session_ids: List[int] | None = None,
     participant_ids: List[int] | None = None,
     sequence_ids: List[int] | None = None,
+    set_ids: List[int] | None = None,
     interpolated: bool = False,
     fixation: bool = False,
 ) -> pd.DataFrame:
@@ -32,6 +33,7 @@ def get_eye_tracking_data(
         session_ids (List[int] | None, optional): The session id. Defaults to None.
         participant_ids (List[int] | None, optional): The participant id. Defaults to None.
         sequence_ids (List[int] | None, optional): The sequence id. Defaults to None.
+        set_ids (List[int] | None, optional): The set id. Defaults to None.
         interpolated (bool, optional): Whether to return the interpolated data. Defaults to False.
         fixation (bool, optional): Whether to return the fixation data. Defaults to False.
 
@@ -45,6 +47,8 @@ def get_eye_tracking_data(
         raise ValueError(f"❌ Invalid experiment ids: {experiment_ids}, must contain 1 or 2.")
     if session_ids is not None and set(session_ids) - {1, 2}:
         raise ValueError(f"❌ Invalid session ids: {session_ids}, must contain 1 or 2.")
+    if set_ids is not None and set(set_ids) - {0, 1}:
+        raise ValueError(f"❌ Invalid set ids: {set_ids}, must contain 0 or 1.")
     if interpolated and fixation:
         raise ValueError("❌ Either interpolated or fixation data can be returned, not both.")
 
@@ -60,6 +64,8 @@ def get_eye_tracking_data(
         data = data[data["ParticipantId"].isin(participant_ids)]
     if sequence_ids is not None:
         data = data[data["SequenceId"].isin(sequence_ids)]
+    if set_ids is not None:
+        data = data[data["SetId"].isin(set_ids)]
 
     return data
 
@@ -84,7 +90,7 @@ def with_time_since_start_column(data: pd.DataFrame) -> pd.DataFrame:
         return data
 
     grouped_data = data.groupby(
-        ["ExperimentId", "SessionId", "ParticipantId", "SequenceId"]
+        ["ExperimentId", "SessionId", "ParticipantId", "SequenceId", "SetId"]
     )
     groups = [grouped_data.get_group(group) for group in grouped_data.groups]
 
@@ -124,7 +130,7 @@ def with_time_since_start_end_column(
         return data
     
     grouped_data = data.groupby(
-        ["ExperimentId", "SessionId", "ParticipantId", "SequenceId"]
+        ["ExperimentId", "SessionId", "ParticipantId", "SequenceId", "SetId"]
     )
     groups = [grouped_data.get_group(group) for group in grouped_data.groups]
 
@@ -141,7 +147,8 @@ def with_time_since_start_end_column(
                 g["ExperimentId"].iloc[0] == group["ExperimentId"].iloc[0] and
                 g["SessionId"].iloc[0] == group["SessionId"].iloc[0] and
                 g["ParticipantId"].iloc[0] == group["ParticipantId"].iloc[0] and
-                g["SequenceId"].iloc[0] == group["SequenceId"].iloc[0]
+                g["SequenceId"].iloc[0] == group["SequenceId"].iloc[0] and
+                g["SetId"].iloc[0] == group["SetId"].iloc[0]
             ), None)
             if corresponding_group is None:
                 print(" ⚠️  No corresponding group found, getting the minimum start timestamp of the data itself.")
@@ -168,7 +175,7 @@ def with_time_since_last_column(
     Returns:
         pd.DataFrame: The eye tracking data with the time since last gaze point column.
     """
-    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId"])
+    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId", "SetId"])
     groups = [data.get_group(group) for group in data.groups]
 
     for i, group in enumerate(groups):
@@ -195,7 +202,7 @@ def with_distance_since_last_column(
     Returns:
         pd.DataFrame: The eye tracking data with the distance since last gaze point column.
     """
-    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId"])
+    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId", "SetId"])
     groups = [data.get_group(group) for group in data.groups]
 
     for i, group in enumerate(groups):
