@@ -254,6 +254,7 @@ def visualize_gaze_scanpath_live(
             only_first_frame=False,
         )
     else:
+        background_fps = None
         background = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
 
     # Initialize video writer

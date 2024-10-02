@@ -362,12 +362,12 @@ def draw_information(
         np.ndarray: The frame with the information drawn.
     """
     # Draw experiment, session, and sequence IDs
-    id_text = (
-        f"Experiment(s) {', '.join(map(str, experiment_ids))}\n"
-        f"Session(s) {', '.join(map(str, session_ids))}\n"
-        f"Sequence(s) {', '.join(map(str, sequence_ids))}\n"
-        f"Set(s) {', '.join(map(str, set_ids))}"
-    )
+    id_text = ""
+    id_text += f"Experiment(s) {', '.join(map(str, experiment_ids))} " if experiment_ids else ""
+    id_text += f"Session(s) {', '.join(map(str, session_ids))} " if session_ids else ""
+    id_text += f"Sequence(s) {', '.join(map(str, sequence_ids))} " if sequence_ids else ""
+    id_text += f"Set(s) {', '.join(map(str, set_ids))} " if set_ids else ""
+
     id_text_x = margin
     id_text_y = margin
     cv2.putText(

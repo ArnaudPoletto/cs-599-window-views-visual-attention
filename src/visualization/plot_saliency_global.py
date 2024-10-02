@@ -53,6 +53,7 @@ def get_saliency_global(
     kde_bandwidth: float,
     use_fixations: bool,
     use_interpolated: bool,
+    n_samples: int | None = None,
 ):
     """
     Get the global saliency map.
@@ -69,6 +70,7 @@ def get_saliency_global(
         kde_bandwidth (float): The bandwidth for the Kernel Density Estimation.
         use_fixations (bool): Use fixations instead of gaze points.
         use_interpolated (bool): Whether to use interpolated data.
+        n_samples (int | None): The number of samples to use.
 
     Returns:
         np.ndarray: The frame with the saliency map.
@@ -123,6 +125,14 @@ def get_saliency_global(
     # Get coordinates for each session
     coordinates = get_coordinates(groups=groups)
 
+    # Sample coordinates
+    if n_samples is not None:
+        n_samples = min(n_samples, len(coordinates))
+        coordinates = np.array(coordinates)
+        idx = np.random.choice(len(coordinates), n_samples, replace=False)
+        coordinates = coordinates[idx]
+        coordinates = list(map(tuple, coordinates))
+
     # Draw saliency
     saliency_width = int(frame_width * saliency_resolution_ratio)
     saliency_height = int(frame_height * saliency_resolution_ratio)
@@ -144,6 +154,7 @@ def visualize_saliency_global(
     session_ids: List[int] | None,
     participant_ids: List[int] | None,
     sequence_ids: List[int] | None,
+    set_ids: List[int] | None,
     output_file_path: str,
     frame_width: int,
     frame_height: int,
@@ -151,6 +162,7 @@ def visualize_saliency_global(
     kde_bandwidth: float,
     use_fixations: bool,
     use_interpolated: bool,
+    n_samples: int | None = None,
 ) -> None:
     """
     Visualize saliency.
@@ -160,6 +172,7 @@ def visualize_saliency_global(
         session_ids (List[int] | None): The session ID.
         participant_ids (List[int] | None): The participant ID.
         sequence_ids (List[int] | None): The sequence ID.
+        set_ids (List[int] | None): The set ID.
         output_file_path (str): The output file path.
         frame_width (int): The frame width.
         frame_height (int): The frame height.
@@ -167,6 +180,7 @@ def visualize_saliency_global(
         kde_bandwidth (float): The bandwidth for the Kernel Density Estimation.
         use_fixations (bool): Use fixations instead of gaze points.
         use_interpolated (bool): Whether to use interpolated data.
+        n_samples (int | None): The number of samples to use.
     """
     if use_fixations and use_interpolated:
         raise ValueError("❌ Cannot use both fixations and interpolated data.")
@@ -176,12 +190,14 @@ def visualize_saliency_global(
         session_ids=session_ids,
         participant_ids=participant_ids,
         sequence_ids=sequence_ids,
+        set_ids=set_ids,
         frame_width=frame_width,
         frame_height=frame_height,
         saliency_resolution_ratio=saliency_resolution_ratio,
         kde_bandwidth=kde_bandwidth,
         use_fixations=use_fixations,
         use_interpolated=use_interpolated,
+        n_samples=n_samples,
     )
     frame = frame[..., ::-1]
 
@@ -206,8 +222,11 @@ def visualize_saliency_global(
         if sequence_ids is None
         else f"sequence(s) {', '.join(map(str, sequence_ids))}"
     )
+    set_str = (
+        f"all sets" if set_ids is None else f"set(s) {', '.join(map(str, set_ids))}"
+    )
     plt.suptitle(
-        f"Global saliency map of {participants_str} for {', '.join([experiment_str, session_str, sequence_str])}",
+        f"Global saliency map of {participants_str} for {', '.join([experiment_str, session_str, sequence_str, set_str])}",
     )
     plt.imshow(frame)
     plt.axis("off")
@@ -313,6 +332,13 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="Whether to use interpolated data.",
     )
+    parser.add_argument(
+        "--n-samples",
+        "-n",
+        type=int,
+        default=None,
+        help="The number of samples to use.",
+    )
 
     return parser.parse_args()
 
@@ -334,6 +360,7 @@ def main() -> None:
     kde_bandwidth = args.kde_bandwidth
     use_fixations = args.use_fixations
     use_interpolated = args.use_interpolated
+    n_samples = args.n_samples
 
     visualize_saliency_global(
         experiment_ids=experiment_ids,
@@ -348,6 +375,7 @@ def main() -> None:
         kde_bandwidth=kde_bandwidth,
         use_fixations=use_fixations,
         use_interpolated=use_interpolated,
+        n_samples=n_samples,
     )
 
 

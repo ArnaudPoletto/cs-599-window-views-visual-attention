@@ -167,6 +167,7 @@ def visualize_saliency_live(
             only_first_frame=False,
         )
     else:
+        background_fps = None
         background = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
 
     # Initialize video writer
@@ -224,7 +225,7 @@ def visualize_saliency_live(
             max_frame=max_frame,
             experiment_ids=experiment_ids,
             session_ids=session_ids,
-            sequence_id=sequence_ids,
+            sequence_ids=sequence_ids,
             set_ids=set_ids,
             frame_width=frame_width,
         )

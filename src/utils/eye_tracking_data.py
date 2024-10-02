@@ -69,6 +69,29 @@ def get_eye_tracking_data(
 
     return data
 
+def with_media_type_column(data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add a column with the media type of the stimulus.
+
+    Args:
+        data (pd.DataFrame): The eye tracking data.
+
+    Returns:
+        pd.DataFrame: The eye tracking data with the media type column.
+    """
+    if "MediaType" in data.columns:
+        print(" ⚠️  MediaType column already exists in the data, skipping...")
+        return data
+
+    if data.empty:
+        print(" ⚠️  No data provided, skipping...")
+        data["MediaType"] = ""
+        return data
+
+    is_image = (data["ExperimentId"] == 1) & (data["SetId"] == 1)
+    data["MediaType"] = is_image.map({True: "Image", False: "Video"})
+
+    return data
 
 def with_time_since_start_column(data: pd.DataFrame) -> pd.DataFrame:
     """
