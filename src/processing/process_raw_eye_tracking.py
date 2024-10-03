@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 from src.utils.eye_tracking_data import (
     with_time_since_start_column,
 )
+from src.utils.file import get_files_recursive
 from src.config import (
     RAW_EYE_TRACKING_DATA_PATH,
     RAW_EYE_TRACKING_FRAME_WIDTH,
@@ -38,15 +39,11 @@ def get_raw_data() -> pd.DataFrame:
         pd.DataFrame: The raw gaze data.
     """
     # Get valid source file paths
-    file_paths = Path(RAW_EYE_TRACKING_DATA_PATH).rglob(
-        "Exp[12]_[12][0-9][0-9][12]_*.csv"
-    )
-    file_paths = [file_path.resolve().as_posix() for file_path in file_paths]
+    file_paths = get_files_recursive(RAW_EYE_TRACKING_DATA_PATH, "Exp[12]_[12][0-9][0-9][12]_*.csv")
     n_files = len(file_paths)
 
     # Check if all files were found
-    all_file_paths = Path(RAW_EYE_TRACKING_DATA_PATH).rglob("*.csv")
-    all_file_paths = [file_path.resolve().as_posix() for file_path in all_file_paths]
+    all_file_paths = get_files_recursive(RAW_EYE_TRACKING_DATA_PATH, "*.csv")
     ignored_files = set(all_file_paths) - set(file_paths)
     if len(ignored_files) > 0:
         print(

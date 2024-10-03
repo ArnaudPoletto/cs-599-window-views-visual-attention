@@ -8,13 +8,13 @@ import cv2
 import numpy as np
 import pandas as pd
 from typing import List, Tuple
-from sklearn.neighbors import KernelDensity
 
 from src.utils.eye_tracking_data import (
     get_eye_tracking_data,
     with_time_since_start_column,
     with_time_since_start_end_column,
 )
+from src.utils.saliency import get_kde_density, get_saliency_map
 from src.config import SETS_PATH
 
 N_NANOSECONDS_IN_SECOND = 1e9  # Number of hundred nanoseconds in a second
@@ -305,25 +305,18 @@ def draw_saliency(
         ]
     )
 
-    # Fit Kernel Density Estimation to gaze coordinates
-    x_grid, y_grid = np.meshgrid(
-        np.linspace(0, saliency_width - 1, saliency_width),
-        np.linspace(0, saliency_height - 1, saliency_height),
+    kde_density = get_kde_density(
+        coordinates=coordinates,
+        saliency_width=saliency_width,
+        saliency_height=saliency_height,
+        kde_bandwidth=kde_bandwidth,
     )
-    grid_sample = np.vstack([x_grid.ravel(), y_grid.ravel()]).T
-    kde = KernelDensity(bandwidth=kde_bandwidth, kernel="gaussian")
-    kde.fit(coordinates)
-    kde_scores = kde.score_samples(grid_sample)
-    kde_density = np.exp(kde_scores).reshape(saliency_height, saliency_width)
-    kde_density = cv2.normalize(kde_density, None, 0, 255, cv2.NORM_MINMAX).astype(
-        np.uint8
+    saliency_map = get_saliency_map(
+        kde_density=kde_density,
+        frame_width=frame_width,
+        frame_height=frame_height,
+        saliency_colormap=SALIENCY_COLORMAP,
     )
-    # Apply colormap to estimated density, resize saliency map and mix with frame
-    if np.unique(kde_density).size == 1:
-        saliency_map = np.zeros((saliency_height, saliency_width, 3), dtype=np.uint8)
-    else:
-        saliency_map = cv2.applyColorMap(kde_density, SALIENCY_COLORMAP)
-    saliency_map = cv2.resize(saliency_map, (frame_width, frame_height))
     frame = cv2.addWeighted(frame, 0.5, saliency_map, 0.5, 0)
 
     return frame
@@ -363,9 +356,15 @@ def draw_information(
     """
     # Draw experiment, session, and sequence IDs
     id_text = ""
-    id_text += f"Experiment(s) {', '.join(map(str, experiment_ids))} " if experiment_ids else ""
+    id_text += (
+        f"Experiment(s) {', '.join(map(str, experiment_ids))} "
+        if experiment_ids
+        else ""
+    )
     id_text += f"Session(s) {', '.join(map(str, session_ids))} " if session_ids else ""
-    id_text += f"Sequence(s) {', '.join(map(str, sequence_ids))} " if sequence_ids else ""
+    id_text += (
+        f"Sequence(s) {', '.join(map(str, sequence_ids))} " if sequence_ids else ""
+    )
     id_text += f"Set(s) {', '.join(map(str, set_ids))} " if set_ids else ""
 
     id_text_x = margin
