@@ -96,6 +96,7 @@ def visualize_saliency_live(
     kde_bandwidth: float,
     use_fixations: bool,
     use_interpolated: bool = False,
+    n_samples: int | None = None,
 ) -> None:
     """
     Visualize gaze saliency for the given experiment, session, participant(s), and sequence.
@@ -114,6 +115,7 @@ def visualize_saliency_live(
         kde_bandwidth (float): The bandwidth for the Kernel Density Estimation.
         use_fixations (bool): Use fixations instead of gaze points.
         use_interpolated (bool): Whether to use interpolated data.
+        n_samples (int | None): The number of samples to use.
 
     Raises:
         ValueError: If both fixations and interpolated data are requested.
@@ -207,6 +209,15 @@ def visualize_saliency_live(
         coordinates = [
             coord for group_coords in group_coordinates for coord in group_coords
         ]
+
+        # Sample coordinates
+        if n_samples is not None:
+            n_samples = min(n_samples, len(coordinates))
+            coordinates = np.array(coordinates)
+            idx = np.random.choice(len(coordinates), n_samples, replace=False)
+            coordinates = coordinates[idx]
+            coordinates = list(map(tuple, coordinates))
+
         saliency_width = int(frame_width * saliency_resolution_ratio)
         saliency_height = int(frame_height * saliency_resolution_ratio)
         frame = draw_saliency(
@@ -342,6 +353,13 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="Whether to use interpolated data.",
     )
+    parser.add_argument(
+        "--n-samples",
+        "-n",
+        type=int,
+        default=None,
+        help="The number of samples to use.",
+    )
 
     return parser.parse_args()
 
@@ -364,6 +382,7 @@ def main() -> None:
     kde_bandwidth = args.kde_bandwidth
     use_fixations = args.use_fixations
     use_interpolated = args.use_interpolated
+    n_samples = args.n_samples
 
     visualize_saliency_live(
         experiment_ids=experiment_ids,
@@ -379,6 +398,7 @@ def main() -> None:
         kde_bandwidth=kde_bandwidth,
         use_fixations=use_fixations,
         use_interpolated=use_interpolated,
+        n_samples=n_samples,
     )
 
 

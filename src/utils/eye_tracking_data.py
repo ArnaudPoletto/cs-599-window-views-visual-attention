@@ -9,7 +9,7 @@ import pandas as pd
 from typing import List
 
 from src.config import (
-    PROCESSED_EYE_TRACKING_DATA_PATH,
+    EYE_TRACKING_PROCESSED_PATH,
     PROCESSED_EYE_TRACKING_FILE_NAME,
 )
 
@@ -53,7 +53,7 @@ def get_eye_tracking_data(
         raise ValueError("❌ Either interpolated or fixation data can be returned, not both.")
 
     data_file_prefix = "interpolated_" if interpolated else "fixation_" if fixation else ""
-    data_file_path = f"{PROCESSED_EYE_TRACKING_DATA_PATH}/{data_file_prefix}{PROCESSED_EYE_TRACKING_FILE_NAME}"
+    data_file_path = f"{EYE_TRACKING_PROCESSED_PATH}/{data_file_prefix}{PROCESSED_EYE_TRACKING_FILE_NAME}"
     data = pd.read_csv(data_file_path)
 
     if experiment_ids is not None:

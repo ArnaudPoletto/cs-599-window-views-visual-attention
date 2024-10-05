@@ -15,20 +15,20 @@ from src.utils.eye_tracking_data import (
 )
 from src.utils.file import get_files_recursive
 from src.config import (
-    RAW_EYE_TRACKING_DATA_PATH,
+    EYE_TRACKING_RAW_PATH,
     RAW_EYE_TRACKING_FRAME_WIDTH,
     RAW_EYE_TRACKING_FRAME_HEIGHT,
-    PROCESSED_EYE_TRACKING_DATA_PATH,
+    EYE_TRACKING_PROCESSED_PATH,
     PROCESSED_EYE_TRACKING_FILE_NAME,
 )
 
 OUTLIER_VALUES = (3000, 1500)
-MAX_TIME_SINCE_START_SECONDS = 120
-RESAMPLING_RATE = "50ms"
+MAX_TIME_SINCE_START_SEC = 120
+RESAMPLING_RATE = "50ms"  # 20 Hz
 DISPERSION_THRESHOLD_PX = 100.0
-DURATION_THRESHOLD_NS = 200.0 * 1e6  # 100 ms in nanoseconds
-N_HNANOSECONDS_IN_NANOSECOND = 100  # Number of hundred nanoseconds in a nanosecond
-N_NANOSECONDS_IN_SECOND = 1e9  # Number of nanoseconds in a second
+DURATION_THRESHOLD_NSEC = 200.0 * 1e6  # 100 ms in nanoseconds
+N_HNSEC_IN_NSEC = 100  # Number of hundred nanoseconds in a nanosecond
+N_NSEC_IN_SEC = 1e9  # Number of nanoseconds in a second
 
 
 def get_raw_data() -> pd.DataFrame:
@@ -39,11 +39,13 @@ def get_raw_data() -> pd.DataFrame:
         pd.DataFrame: The raw gaze data.
     """
     # Get valid source file paths
-    file_paths = get_files_recursive(RAW_EYE_TRACKING_DATA_PATH, "Exp[12]_[12][0-9][0-9][12]_*.csv")
+    file_paths = get_files_recursive(
+        EYE_TRACKING_RAW_PATH, "Exp[12]_[12][0-9][0-9][12]_*.csv"
+    )
     n_files = len(file_paths)
 
     # Check if all files were found
-    all_file_paths = get_files_recursive(RAW_EYE_TRACKING_DATA_PATH, "*.csv")
+    all_file_paths = get_files_recursive(EYE_TRACKING_RAW_PATH, "*.csv")
     ignored_files = set(all_file_paths) - set(file_paths)
     if len(ignored_files) > 0:
         print(
@@ -97,6 +99,10 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
     data["ParticipantId"] = (data["Id"] % 1000) // 10  # Is the hundreds and tens digit
     data["SetId"] = data["SequenceSet"]
 
+    # Change timestamp unit to nanoseconds
+    data["Timestamp"] = data["Timestamp"].astype("int64")
+    data["Timestamp_ns"] = data["Timestamp"] * N_HNSEC_IN_NSEC
+
     # Delete entries with invalid ids
     data = data[
         ((data["ExperimentId"] == 1) | (data["ExperimentId"] == 2))
@@ -104,17 +110,26 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
         & ((data["SetId"] == 0) | (data["SetId"] == 1))
     ]
 
-    # Change timestamp unit to nanoseconds
-    data["Timestamp"] = data["Timestamp"].astype("int64")
-    data["Timestamp_ns"] = data["Timestamp"] * N_HNANOSECONDS_IN_NANOSECOND
-
     # Delete entries recorded after a long time
     data = with_time_since_start_column(data)
-    data = data[
-        data["TimeSinceStart_ns"]
-        <= MAX_TIME_SINCE_START_SECONDS * N_NANOSECONDS_IN_SECOND
-    ]
+    data = data[data["TimeSinceStart_ns"] <= MAX_TIME_SINCE_START_SEC * N_NSEC_IN_SEC]
     data = data.drop(columns=["TimeSinceStart_ns"])
+
+    # Delete outlier participants
+    data = data[
+        ~(
+            (data["ExperimentId"] == 1)
+            & (data["SessionId"] == 1)
+            & data["ParticipantId"].isin([2, 9, 30])
+        )
+    ]
+    data = data[
+        ~(
+            (data["ExperimentId"] == 2)
+            & (data["SessionId"] == 1)
+            & data["ParticipantId"].isin([23])
+        )
+    ]
 
     # Delete vector gaze information and id
     data = data.drop(
@@ -182,7 +197,7 @@ def get_interpolated_data(
 
     # The conversion does not give good date, but the time unit is correct
     data["DateTime"] = pd.to_datetime(data["Timestamp_ns"], unit="ns")
-    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId"])
+    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId", "SetId"])
     groups = [data.get_group(x) for x in data.groups]
 
     for i, group in tqdm(
@@ -396,7 +411,7 @@ def parse_arguments() -> argparse.Namespace:
         "--duration-threshold",
         "-dut",
         type=float,
-        default=DURATION_THRESHOLD_NS,
+        default=DURATION_THRESHOLD_NSEC,
         help="The duration threshold for fixation detection in nanoseconds.",
     )
 
@@ -412,12 +427,14 @@ def main() -> None:
     duration_threshold = args.duration_threshold
 
     # Remove old processed gaze data file
-    print("➡️ Removing old gaze data files.")
-    data_file_path = (
-        f"{PROCESSED_EYE_TRACKING_DATA_PATH}/{PROCESSED_EYE_TRACKING_FILE_NAME}"
+    print("➡️  Removing old gaze data files.")
+    data_file_path = f"{EYE_TRACKING_PROCESSED_PATH}/{PROCESSED_EYE_TRACKING_FILE_NAME}"
+    interpolated_data_file_path = (
+        f"{EYE_TRACKING_PROCESSED_PATH}/interpolated_{PROCESSED_EYE_TRACKING_FILE_NAME}"
     )
-    interpolated_data_file_path = f"{PROCESSED_EYE_TRACKING_DATA_PATH}/interpolated_{PROCESSED_EYE_TRACKING_FILE_NAME}"
-    fixation_data_file_path = f"{PROCESSED_EYE_TRACKING_DATA_PATH}/fixation_{PROCESSED_EYE_TRACKING_FILE_NAME}"
+    fixation_data_file_path = (
+        f"{EYE_TRACKING_PROCESSED_PATH}/fixation_{PROCESSED_EYE_TRACKING_FILE_NAME}"
+    )
     if os.path.exists(data_file_path):
         os.remove(data_file_path)
     if os.path.exists(interpolated_data_file_path):
@@ -425,25 +442,32 @@ def main() -> None:
     if os.path.exists(fixation_data_file_path):
         os.remove(fixation_data_file_path)
 
+    os.makedirs(EYE_TRACKING_PROCESSED_PATH, exist_ok=True)
+
     raw_data = get_raw_data()
+    # Get processed data and write to file
     processed_data = process_data(raw_data)
+    processed_data.to_csv(data_file_path, index=False)
+    del raw_data  # Free memory
+    print(f"✅ Saved processed gaze data to {Path(EYE_TRACKING_PROCESSED_PATH).resolve()} with {len(processed_data):,} entries.")
+
+    # Get interpolated data and write to file
     interpolated_data = get_interpolated_data(
         processed_data, resampling_rate=RESAMPLING_RATE
     )
+    interpolated_data.to_csv(interpolated_data_file_path, index=False)
+    del processed_data  # Free memory
+    print(f"✅ Saved interpolated gaze data to {Path(EYE_TRACKING_PROCESSED_PATH).resolve()} with {len(interpolated_data):,} entries.")
+
+    # Get fixation data and write to file
     fixation_data = get_fixation_data(
         data=interpolated_data,
         dispersion_threshold_px=dispersion_threshold,
         duration_threshold_ns=duration_threshold,
     )
-
-    # Save processed gaze data
-    os.makedirs(PROCESSED_EYE_TRACKING_DATA_PATH, exist_ok=True)
-    processed_data.to_csv(data_file_path, index=False)
-    interpolated_data.to_csv(interpolated_data_file_path, index=False)
     fixation_data.to_csv(fixation_data_file_path, index=False)
-    print(
-        f"✅ Saved processed and interpolated gaze data to {data_file_path} and {interpolated_data_file_path}."
-    )
+
+    print(f"✅ Saved fixation data to {Path(EYE_TRACKING_PROCESSED_PATH).resolve()} with {len(fixation_data):,} entries.")
 
 
 if __name__ == "__main__":

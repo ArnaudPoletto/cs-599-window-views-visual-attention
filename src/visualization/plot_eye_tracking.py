@@ -310,6 +310,7 @@ def draw_saliency(
         saliency_width=saliency_width,
         saliency_height=saliency_height,
         kde_bandwidth=kde_bandwidth,
+        apply_exponential=True,
     )
     saliency_map = get_saliency_map(
         kde_density=kde_density,

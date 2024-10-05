@@ -35,6 +35,7 @@ def get_kde_density(
     if apply_exponential:
         kde_scores -= np.max(kde_scores) # For numerical stability
         kde_scores = np.exp(kde_scores)
+    kde_scores /= np.sum(kde_scores)
     kde_density = kde_scores.reshape(saliency_height, saliency_width)
 
     return kde_density
@@ -68,3 +69,5 @@ def get_saliency_map(
         )
         saliency_map = cv2.applyColorMap(saliency_map, saliency_colormap)
     saliency_map = cv2.resize(saliency_map, (frame_width, frame_height))
+
+    return saliency_map

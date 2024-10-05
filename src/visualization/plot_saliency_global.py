@@ -26,7 +26,7 @@ DEFAULT_KDE_BANDWIDTH = 10.0
 
 def get_coordinates(groups: List[pd.DataFrame]) -> List[Tuple[float, float]]:
     """
-    Get the coordinates.
+    Get coordinates from given groups.
 
     Args:
         groups (List[pd.DataFrame]): The grouped data.
@@ -56,7 +56,7 @@ def get_saliency_global(
     n_samples: int | None = None,
 ):
     """
-    Get the global saliency map.
+    Get global saliency map for specified data.
 
     Args:
         experiment_ids (List[int] | None): The experiment ID.
@@ -66,9 +66,9 @@ def get_saliency_global(
         set_ids (List[int] | None): The set ID.
         frame_width (int): The frame width.
         frame_height (int): The frame height.
-        saliency_resolution_ratio (float): The saliency resolution ratio.
+        saliency_resolution_ratio (float): The saliency resolution ratio, i.e. the downscaling factor for the saliency map from the frame.
         kde_bandwidth (float): The bandwidth for the Kernel Density Estimation.
-        use_fixations (bool): Use fixations instead of gaze points.
+        use_fixations (bool): Whether to use fixations instead of gaze points.
         use_interpolated (bool): Whether to use interpolated data.
         n_samples (int | None): The number of samples to use.
 
