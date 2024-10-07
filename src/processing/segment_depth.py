@@ -15,8 +15,6 @@ from sklearn.cluster import KMeans
 from src.utils.file import get_files_recursive
 from src.config import (
     DEPTH_MAP_PFM_PATH,
-    DEPTH_SEG_IMG_PATH,
-    DEPTH_SEG_PFM_PATH,
 )
 
 
@@ -47,11 +45,11 @@ def segment_depth(
     segmented_map = segmented_map.astype(np.float32)
 
     # Save segmented depth map as pfm and image files
-    segmented_pfm_file_path = file_path.replace("map_pfm", "segmented_pfm")
+    segmented_pfm_file_path = file_path.replace("map_pfm", "seg_pfm")
     os.makedirs(os.path.dirname(segmented_pfm_file_path), exist_ok=True)
     justpfm.write_pfm(file_name=segmented_pfm_file_path, data=segmented_map)
 
-    segmented_img_file_path = file_path.replace("map_pfm", "segmented_images").replace(".pfm", ".png")
+    segmented_img_file_path = file_path.replace("map_pfm", "seg_img").replace(".pfm", ".png")
     segmented_map = ((segmented_map / (n_clusters - 1)) * 255).astype(np.uint8)
     os.makedirs(os.path.dirname(segmented_img_file_path), exist_ok=True)
     cv2.imwrite(segmented_img_file_path, segmented_map)

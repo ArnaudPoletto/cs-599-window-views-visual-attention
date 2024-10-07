@@ -315,7 +315,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--kde-bandwidth",
-        "-kdeb",
+        "-kb",
         type=float,
         default=DEFAULT_KDE_BANDWIDTH,
         help="The bandwidth for the Kernel Density Estimation.",

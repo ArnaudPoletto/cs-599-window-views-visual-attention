@@ -14,7 +14,7 @@ from src.utils.eye_tracking_data import (
     with_time_since_start_column,
     with_time_since_start_end_column,
 )
-from src.utils.saliency import get_kde_density, get_saliency_map
+from src.utils.kde import get_kde_density, get_saliency_map
 from src.config import SETS_PATH
 
 N_NANOSECONDS_IN_SECOND = 1e9  # Number of hundred nanoseconds in a second
@@ -307,15 +307,15 @@ def draw_saliency(
 
     kde_density = get_kde_density(
         coordinates=coordinates,
-        saliency_width=saliency_width,
-        saliency_height=saliency_height,
+        kde_width=saliency_width,
+        kde_height=saliency_height,
         kde_bandwidth=kde_bandwidth,
         apply_exponential=True,
     )
     saliency_map = get_saliency_map(
         kde_density=kde_density,
-        frame_width=frame_width,
-        frame_height=frame_height,
+        width=frame_width,
+        height=frame_height,
         saliency_colormap=SALIENCY_COLORMAP,
     )
     frame = cv2.addWeighted(frame, 0.5, saliency_map, 0.5, 0)

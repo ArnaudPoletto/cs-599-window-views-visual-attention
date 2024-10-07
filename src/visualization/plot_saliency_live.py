@@ -44,7 +44,7 @@ def update_group_coordinates(
         next_frames (List[int]): The next frames.
         curr_frame (int): The current frame.
         max_frame (int): The maximum frame.
-        coordinates (List[Tuple[float, float]]): The current gaze coordinates.
+        group_coordinates (List[Tuple[float, float]]): The group coordinates.
         use_fixations (bool): Use fixations instead of gaze points.
 
     Returns:
@@ -336,7 +336,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--kde-bandwidth",
-        "-kdeb",
+        "-kb",
         type=float,
         default=DEFAULT_KDE_BANDWIDTH,
         help="The bandwidth for the Kernel Density Estimation.",
