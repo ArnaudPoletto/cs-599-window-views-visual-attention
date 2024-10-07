@@ -117,6 +117,8 @@ def main() -> None:
                 os.makedirs(os.path.dirname(saliency_map_img_path), exist_ok=True)
                 cv2.imwrite(saliency_map_img_path, kde_density)
 
+    print(f"✅ Global saliency maps computed and saved at {Path(SALIENCY_MAP_PFM_PATH).resolve()}.")
+
 
 if __name__ == "__main__":
     main()

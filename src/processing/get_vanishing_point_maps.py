@@ -6,11 +6,11 @@ sys.path.append(str(GLOBAL_DIR))
 
 import os
 import cv2
-from justpfm import justpfm
 import argparse
 import numpy as np
 from tqdm import tqdm
 from typing import List
+from justpfm import justpfm
 
 from src.utils.kde import get_kde_density
 from src.utils.file import get_files_recursive, get_ids_from_file_path, get_session_str
@@ -317,6 +317,8 @@ def main() -> None:
         ).astype(np.uint8)
         os.makedirs(os.path.dirname(vanishing_point_map_img_path), exist_ok=True)
         cv2.imwrite(vanishing_point_map_img_path, vanishing_point_map)
+
+    print(f"✅ Vanishing point maps computed and saved at {Path(VANISHING_POINT_MAP_PFM_PATH).resolve()}.") 
 
 
 if __name__ == "__main__":
