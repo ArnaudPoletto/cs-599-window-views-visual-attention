@@ -12,7 +12,7 @@ from tqdm import tqdm
 from justpfm import justpfm
 from transformers import AutoImageProcessor, AutoModelForDepthEstimation
 
-from src.utils.file import get_files_recursive, get_ids_from_file_path, get_session_str
+from src.utils.file import get_files_recursive, get_ids_from_file_path, get_set_str
 from src.config import (
     IMAGES_PATH,
     DEPTH_MAP_IMG_PATH,
@@ -54,19 +54,17 @@ def main() -> None:
             mode="bicubic",
             align_corners=False,
         )
-
-        # Convert and normalize depth map
+        prediction = torch.clamp(prediction, min=0)
         depth_map = prediction.squeeze().cpu().numpy()
-        depth_map = cv2.normalize(depth_map, None, 0, 1, cv2.NORM_MINMAX)
 
         # Save depth map
-        experiment_id, session_id, sequence_id = get_ids_from_file_path(image_file_path)
-        session_str = get_session_str(experiment_id, session_id)
-        depth_map_pfm_path = f"{DEPTH_MAP_PFM_PATH}/experiment{experiment_id}/{session_str}/scene{sequence_id}.pfm"
+        experiment_id, set_id, sequence_id = get_ids_from_file_path(image_file_path)
+        set_str = get_set_str(experiment_id, set_id)
+        depth_map_pfm_path = f"{DEPTH_MAP_PFM_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id}.pfm"
         os.makedirs(os.path.dirname(depth_map_pfm_path), exist_ok=True)
         justpfm.write_pfm(file_name=depth_map_pfm_path, data=depth_map)
 
-        depth_map_img_path = f"{DEPTH_MAP_IMG_PATH}/experiment{experiment_id}/{session_str}/scene{sequence_id}.png"
+        depth_map_img_path = f"{DEPTH_MAP_IMG_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id}.png"
         depth_map = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX).astype(
             np.uint8
         )

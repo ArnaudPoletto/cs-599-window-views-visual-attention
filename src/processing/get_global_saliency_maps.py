@@ -13,7 +13,7 @@ from justpfm import justpfm
 
 from src.utils.eye_tracking_data import get_eye_tracking_data
 from src.utils.kde import get_kde_density
-from src.utils.file import get_session_str
+from src.utils.file import get_set_str
 from src.config import SALIENCY_MAP_IMG_PATH, SALIENCY_MAP_PFM_PATH, IMAGE_WIDTH, IMAGE_HEIGHT
 
 KDE_WIDTH = 192
@@ -78,14 +78,14 @@ def main() -> None:
     # Get KDE density for each sequence
     for experiment_id in fixation_data["ExperimentId"].unique():
         experiment_data = fixation_data[fixation_data["ExperimentId"] == experiment_id]
-        for session_id in experiment_data["SessionId"].unique():
-            session_data = experiment_data[experiment_data["SessionId"] == session_id]
+        for set_id in experiment_data["SetId"].unique():
+            set_data = experiment_data[experiment_data["SetId"] == set_id]
             for sequence_id in tqdm(
-                session_data["SequenceId"].unique(),
-                desc=f"⌛ Computing global saliency maps for experiment {experiment_id} session {session_id}...",
+                set_data["SequenceId"].unique(),
+                desc=f"⌛ Computing global saliency maps for Experiment {experiment_id} Set {set_id}...",
                 unit="sequence",
             ):
-                sequence_data = session_data[session_data["SequenceId"] == sequence_id]
+                sequence_data = set_data[set_data["SequenceId"] == sequence_id]
                 coordinates = sequence_data[["X_sc", "Y_sc"]].values
                 coordinates = np.array(
                     [
@@ -105,12 +105,12 @@ def main() -> None:
                 kde_density = kde_density.astype(np.float32)
 
                 # Save saliency map
-                session_str = get_session_str(experiment_id, session_id)
-                saliency_map_pfm_path = f"{SALIENCY_MAP_PFM_PATH}/experiment{experiment_id}/{session_str}/scene{sequence_id}.pfm"
+                set_str = get_set_str(experiment_id, set_id)
+                saliency_map_pfm_path = f"{SALIENCY_MAP_PFM_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id}.pfm"
                 os.makedirs(os.path.dirname(saliency_map_pfm_path), exist_ok=True)
                 justpfm.write_pfm(file_name=saliency_map_pfm_path, data=kde_density)
                 
-                saliency_map_img_path = f"{SALIENCY_MAP_IMG_PATH}/experiment{experiment_id}/{session_str}/scene{sequence_id}.png"
+                saliency_map_img_path = f"{SALIENCY_MAP_IMG_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id}.png"
                 kde_density = cv2.normalize(
                     kde_density, None, 0, 255, cv2.NORM_MINMAX
                 ).astype(np.uint8)

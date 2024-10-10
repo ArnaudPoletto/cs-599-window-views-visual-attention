@@ -14,7 +14,8 @@ from src.utils.eye_tracking_data import (
     with_time_since_start_column,
     with_time_since_start_end_column,
 )
-from src.utils.kde import get_kde_density, get_saliency_map
+from src.utils.kde import get_kde_density
+from src.utils.saliency import get_saliency_map
 from src.config import SETS_PATH
 
 N_NANOSECONDS_IN_SECOND = 1e9  # Number of hundred nanoseconds in a second

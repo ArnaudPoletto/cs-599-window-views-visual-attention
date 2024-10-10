@@ -13,7 +13,7 @@ from typing import List
 from justpfm import justpfm
 
 from src.utils.kde import get_kde_density
-from src.utils.file import get_files_recursive, get_ids_from_file_path, get_session_str
+from src.utils.file import get_files_recursive, get_ids_from_file_path, get_set_str
 from src.config import (
     IMAGES_PATH,
     VANISHING_POINT_MAP_IMG_PATH,
@@ -86,7 +86,7 @@ def get_leading_lines(
         proximity_threshold (int, optional): The proximity threshold for removing redundant lines. Defaults to PROXIMITY_THRESHOLD.
 
     """
-    # Normalize the depth map for edge detection
+    # Normalize the image for edge detection
     image = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
     # Smooth the image using a Gaussian filter and apply Canny edge detection
@@ -304,14 +304,14 @@ def main() -> None:
 
         # Save vanishing point map
         experiment_id, session_id, sequence_id = get_ids_from_file_path(image_file_path)
-        session_str = get_session_str(experiment_id, session_id)
-        vanishing_point_map_pfm_path = f"{VANISHING_POINT_MAP_PFM_PATH}/experiment{experiment_id}/{session_str}/scene{sequence_id}.pfm"
+        set_str = get_set_str(experiment_id, session_id)
+        vanishing_point_map_pfm_path = f"{VANISHING_POINT_MAP_PFM_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id}.pfm"
         os.makedirs(os.path.dirname(vanishing_point_map_pfm_path), exist_ok=True)
         justpfm.write_pfm(
             file_name=vanishing_point_map_pfm_path, data=vanishing_point_map
         )
 
-        vanishing_point_map_img_path = f"{VANISHING_POINT_MAP_IMG_PATH}/experiment{experiment_id}/{session_str}/scene{sequence_id}.png"
+        vanishing_point_map_img_path = f"{VANISHING_POINT_MAP_IMG_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id}.png"
         vanishing_point_map = cv2.normalize(
             vanishing_point_map, None, 0, 255, cv2.NORM_MINMAX
         ).astype(np.uint8)
