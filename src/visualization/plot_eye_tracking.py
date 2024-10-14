@@ -10,12 +10,12 @@ import pandas as pd
 from typing import List, Tuple
 
 from src.utils.eye_tracking_data import (
-    get_eye_tracking_data,
+    get_gaze_data,
     with_time_since_start_column,
     with_time_since_start_end_column,
 )
 from src.utils.kde import get_kde_density
-from src.utils.saliency import get_saliency_map
+from src.utils.saliency import get_saliency_map, get_saliency_map_difference
 from src.config import SETS_PATH
 
 N_NANOSECONDS_IN_SECOND = 1e9  # Number of hundred nanoseconds in a second
@@ -77,7 +77,7 @@ def get_grouped_processed_data(
     )
 
     # Get data and group by single sequence experiment
-    data = get_eye_tracking_data(
+    data = get_gaze_data(
         experiment_ids=experiment_ids,
         session_ids=session_ids,
         participant_ids=participant_ids,
@@ -137,7 +137,7 @@ def get_grouped_fixation_data(
         List[pd.DataFrame]: The fixation data grouped by single sequence experiment.
     """
     # Get data and group by single sequence experiment
-    data = get_eye_tracking_data(
+    data = get_gaze_data(
         experiment_ids=experiment_ids,
         session_ids=session_ids,
         participant_ids=participant_ids,
@@ -202,7 +202,7 @@ def get_background(
 
     # First session of the first experiment has images as background
     if experiment_id == 1 and set_id == 1:
-        background_file_path += f"/images/scene{sequence_id}.png"
+        background_file_path += f"/images/scene{sequence_id:02}.png"
         background = cv2.imread(background_file_path)
         background = cv2.resize(background, (frame_width, frame_height))
         background_fps = None
@@ -210,11 +210,11 @@ def get_background(
     else:
         # Get video
         if experiment_id == 1 and set_id == 0:
-            background_file_path += f"/videos/scene{sequence_id}.mp4"
+            background_file_path += f"/videos/scene{sequence_id:02}.mp4"
         elif experiment_id == 2 and set_id == 0:
-            background_file_path += f"/clear/scene{sequence_id}.mp4"
+            background_file_path += f"/clear/scene{sequence_id:02}.mp4"
         elif experiment_id == 2 and set_id == 1:
-            background_file_path += f"/overcast/scene{sequence_id}.mp4"
+            background_file_path += f"/overcast/scene{sequence_id:02}.mp4"
         video_capture = cv2.VideoCapture(background_file_path)
         background_fps = video_capture.get(cv2.CAP_PROP_FPS)
         background = []
@@ -278,7 +278,7 @@ def draw_saliency(
     kde_bandwidth: float,
 ) -> np.ndarray:
     """
-    Draw gaze saliency on frame.
+    Draw the gaze saliency on a frame.
 
     Args:
         coordinates (List[Tuple[float, float]]): The gaze coordinates.
@@ -318,6 +318,77 @@ def draw_saliency(
         width=frame_width,
         height=frame_height,
         saliency_colormap=SALIENCY_COLORMAP,
+    )
+    frame = cv2.addWeighted(frame, 0.5, saliency_map, 0.5, 0)
+
+    return frame
+
+
+def draw_saliency_difference(
+    coordinates1: List[Tuple[float, float]],
+    coordinates2: List[Tuple[float, float]],
+    frame: np.ndarray,
+    frame_width: int,
+    frame_height: int,
+    saliency_width: int,
+    saliency_height: int,
+    kde_bandwidth: float,
+) -> np.ndarray:
+    """
+    Draw the difference between two gaze saliency maps on a frame.
+
+    Args:
+        coordinates1 (List[Tuple[float, float]]): The first gaze coordinates.
+        coordinates2 (List[Tuple[float, float]]): The second gaze coordinates.
+        frame (np.ndarray): The frame.
+        frame_width (int): The frame width.
+        frame_height (int): The frame height.
+        saliency_width (int): The saliency map width.
+        saliency_height (int): The saliency map height.
+        kde_bandwidth (float): The bandwidth for the Kernel Density Estimation.
+
+    Returns:
+        np.ndarray: The frame with gaze saliency.
+    """
+    # Return frame if no gaze coordinates
+    if not coordinates1 or not coordinates2:
+        return frame
+
+    frame = frame.copy()
+
+    # Rescale gaze coordinates to frame size
+    coordinates1 = np.array(
+        [
+            [int(coord[0] * saliency_width), int(coord[1] * saliency_height)]
+            for coord in coordinates1
+        ]
+    )
+    coordinates2 = np.array(
+        [
+            [int(coord[0] * saliency_width), int(coord[1] * saliency_height)]
+            for coord in coordinates2
+        ]
+    )
+
+    kde_density1 = get_kde_density(
+        coordinates=coordinates1,
+        kde_width=saliency_width,
+        kde_height=saliency_height,
+        kde_bandwidth=kde_bandwidth,
+        apply_exponential=True,
+    )
+    kde_density2 = get_kde_density(
+        coordinates=coordinates2,
+        kde_width=saliency_width,
+        kde_height=saliency_height,
+        kde_bandwidth=kde_bandwidth,
+        apply_exponential=True,
+    )
+    saliency_map = get_saliency_map_difference(
+        kde_density1=kde_density1,
+        kde_density2=kde_density2,
+        width=frame_width,
+        height=frame_height,
     )
     frame = cv2.addWeighted(frame, 0.5, saliency_map, 0.5, 0)
 

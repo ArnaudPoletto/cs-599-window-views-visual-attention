@@ -11,7 +11,7 @@ import numpy as np
 from tqdm import tqdm
 from justpfm import justpfm
 
-from src.utils.eye_tracking_data import get_eye_tracking_data
+from src.utils.eye_tracking_data import get_gaze_data
 from src.utils.kde import get_kde_density
 from src.utils.file import get_set_str
 from src.config import SALIENCY_MAP_IMG_PATH, SALIENCY_MAP_PFM_PATH, IMAGE_WIDTH, IMAGE_HEIGHT
@@ -73,7 +73,7 @@ def main() -> None:
     n_samples = args.n_samples
 
     # Get fixation data
-    fixation_data = get_eye_tracking_data(fixation=True)
+    fixation_data = get_gaze_data(fixation=True)
 
     # Get KDE density for each sequence
     for experiment_id in fixation_data["ExperimentId"].unique():
@@ -106,11 +106,11 @@ def main() -> None:
 
                 # Save saliency map
                 set_str = get_set_str(experiment_id, set_id)
-                saliency_map_pfm_path = f"{SALIENCY_MAP_PFM_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id}.pfm"
+                saliency_map_pfm_path = f"{SALIENCY_MAP_PFM_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id:02}.pfm"
                 os.makedirs(os.path.dirname(saliency_map_pfm_path), exist_ok=True)
                 justpfm.write_pfm(file_name=saliency_map_pfm_path, data=kde_density)
                 
-                saliency_map_img_path = f"{SALIENCY_MAP_IMG_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id}.png"
+                saliency_map_img_path = f"{SALIENCY_MAP_IMG_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id:02}.png"
                 kde_density = cv2.normalize(
                     kde_density, None, 0, 255, cv2.NORM_MINMAX
                 ).astype(np.uint8)

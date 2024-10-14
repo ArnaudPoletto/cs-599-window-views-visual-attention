@@ -29,6 +29,7 @@ DEPTH_WEIGHT_POWER = 4.0
 FOREGROUND_SCORE_THRESHOLD = 0.2
 SIMILARITY_THRESHOLD = 2.0
 SKY_THRESHOLD = 0.0
+MIN_CLUSTER_SIZE = 20_000
 
 
 def get_foreground_mask(
@@ -132,14 +133,30 @@ def segment_depth(
     foreground_mask = get_foreground_mask(depth_map)
     sky_mask = get_sky_mask(depth_map)
 
-    # Find background values to be clustered
-    background_values = depth_map[~foreground_mask & ~sky_mask].flatten().reshape(-1, 1)
-    if background_values.size == 0:
-        raise ValueError(f"❌ No background values found in {file_path}.")
+    are_valid_clusters = False
+    while not are_valid_clusters:
+        print("NOT VALID")
+        # Find background values to be clustered
+        background_values = depth_map[~foreground_mask & ~sky_mask].flatten().reshape(-1, 1)
+        if background_values.size == 0:
+            raise ValueError(f"❌ No background values found in {file_path}.")
 
-    # Apply k-means clustering
-    kmeans = KMeans(n_clusters=n_clusters, random_state=0)
-    kmeans.fit(background_values)
+        # Apply k-means clustering
+        kmeans = KMeans(n_clusters=n_clusters, random_state=0)
+        kmeans.fit(background_values)
+
+        # If all clusters are valid, add the invalid clusters to the foreground mask and recompute
+        are_valid_clusters = all([np.sum(kmeans.labels_ == i) >= MIN_CLUSTER_SIZE for i in range(n_clusters)])
+        if not are_valid_clusters:
+            old_foreground_mask = foreground_mask.copy()
+            for i in range(n_clusters):
+                if np.sum(kmeans.labels_ == i) < MIN_CLUSTER_SIZE:
+                    print(f"Cluster {i} is invalid.")
+                    invalid_mask = np.zeros_like(depth_map, dtype=bool)
+                    invalid_mask[~old_foreground_mask & ~sky_mask] = kmeans.labels_ == i
+                    foreground_mask |= invalid_mask
+        else:
+            print("VALID")
 
     # Get sorted cluster values
     cluster_centers = kmeans.cluster_centers_.flatten()
@@ -197,8 +214,8 @@ def main() -> None:
 
     # Get recursive list of all files in the directory
     file_paths = get_files_recursive(DEPTH_MAP_PFM_PATH, "*.pfm")
-    for i, file_path in tqdm(
-        enumerate(file_paths), desc="⌛ Segmenting depth images...", unit="image"
+    for file_path in tqdm(
+        file_paths, desc="⌛ Segmenting depth images...", unit="image", total=len(file_paths)
     ):
         segment_depth(file_path=file_path, n_clusters=n_clusters)
 

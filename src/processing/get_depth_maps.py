@@ -20,6 +20,7 @@ from src.config import (
 )
 
 MODEL_SIZE = "Base"
+MAX_DEPTH_VALUE = 5
 
 
 def main() -> None:
@@ -60,11 +61,12 @@ def main() -> None:
         # Save depth map
         experiment_id, set_id, sequence_id = get_ids_from_file_path(image_file_path)
         set_str = get_set_str(experiment_id, set_id)
-        depth_map_pfm_path = f"{DEPTH_MAP_PFM_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id}.pfm"
+        depth_map_pfm_path = f"{DEPTH_MAP_PFM_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id:02}.pfm"
         os.makedirs(os.path.dirname(depth_map_pfm_path), exist_ok=True)
         justpfm.write_pfm(file_name=depth_map_pfm_path, data=depth_map)
 
-        depth_map_img_path = f"{DEPTH_MAP_IMG_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id}.png"
+        depth_map_img_path = f"{DEPTH_MAP_IMG_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id:02}.png"
+        depth_map = np.clip(depth_map, 0, MAX_DEPTH_VALUE)
         depth_map = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX).astype(
             np.uint8
         )

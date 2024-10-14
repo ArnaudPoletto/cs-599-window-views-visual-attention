@@ -45,7 +45,7 @@ def get_set_str(experiment_id: int, set_id: int) -> str:
     if experiment_id == 1:
         set_str = "images" if set_id == 1 else "videos"
     else:
-        set_str = "clear" if set_id == 1 else "overcast"
+        set_str = "overcast" if set_id == 1 else "clear"
 
     return set_str
 

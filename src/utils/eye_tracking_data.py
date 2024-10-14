@@ -16,7 +16,7 @@ from src.config import (
 N_NANOSECONDS_IN_SECOND = 1e9  # Number of nanoseconds in a second
 
 
-def get_eye_tracking_data(
+def get_gaze_data(
     experiment_ids: List[int] | None = None,
     session_ids: List[int] | None = None,
     participant_ids: List[int] | None = None,

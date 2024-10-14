@@ -305,13 +305,13 @@ def main() -> None:
         # Save vanishing point map
         experiment_id, session_id, sequence_id = get_ids_from_file_path(image_file_path)
         set_str = get_set_str(experiment_id, session_id)
-        vanishing_point_map_pfm_path = f"{VANISHING_POINT_MAP_PFM_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id}.pfm"
+        vanishing_point_map_pfm_path = f"{VANISHING_POINT_MAP_PFM_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id:02}.pfm"
         os.makedirs(os.path.dirname(vanishing_point_map_pfm_path), exist_ok=True)
         justpfm.write_pfm(
             file_name=vanishing_point_map_pfm_path, data=vanishing_point_map
         )
 
-        vanishing_point_map_img_path = f"{VANISHING_POINT_MAP_IMG_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id}.png"
+        vanishing_point_map_img_path = f"{VANISHING_POINT_MAP_IMG_PATH}/experiment{experiment_id}/{set_str}/scene{sequence_id:02}.png"
         vanishing_point_map = cv2.normalize(
             vanishing_point_map, None, 0, 255, cv2.NORM_MINMAX
         ).astype(np.uint8)
