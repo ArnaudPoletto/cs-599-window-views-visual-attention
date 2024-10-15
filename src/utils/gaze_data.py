@@ -9,8 +9,8 @@ import pandas as pd
 from typing import List
 
 from src.config import (
-    EYE_TRACKING_PROCESSED_PATH,
-    PROCESSED_EYE_TRACKING_FILE_NAME,
+    GAZE_PROCESSED_PATH,
+    PROCESSED_GAZE_FILE_NAME,
 )
 
 N_NANOSECONDS_IN_SECOND = 1e9  # Number of nanoseconds in a second
@@ -26,7 +26,7 @@ def get_gaze_data(
     fixation: bool = False,
 ) -> pd.DataFrame:
     """
-    Get eye tracking data for a specific experiment, session, and participant. If no id is provided, all data is returned.
+    Get gaze data for a specific experiment, session, and participant. If no id is provided, all data is returned.
 
     Args:
         experiment_ids (List[int] | None, optional): The experiment id. Defaults to None.
@@ -53,7 +53,7 @@ def get_gaze_data(
         raise ValueError("❌ Either interpolated or fixation data can be returned, not both.")
 
     data_file_prefix = "interpolated_" if interpolated else "fixation_" if fixation else ""
-    data_file_path = f"{EYE_TRACKING_PROCESSED_PATH}/{data_file_prefix}{PROCESSED_EYE_TRACKING_FILE_NAME}"
+    data_file_path = f"{GAZE_PROCESSED_PATH}/{data_file_prefix}{PROCESSED_GAZE_FILE_NAME}"
     data = pd.read_csv(data_file_path)
 
     if experiment_ids is not None:
@@ -74,10 +74,10 @@ def with_media_type_column(data: pd.DataFrame) -> pd.DataFrame:
     Add a column with the media type of the stimulus.
 
     Args:
-        data (pd.DataFrame): The eye tracking data.
+        data (pd.DataFrame): The gaze data.
 
     Returns:
-        pd.DataFrame: The eye tracking data with the media type column.
+        pd.DataFrame: The gaze data with the media type column.
     """
     if "MediaType" in data.columns:
         print(" ⚠️  MediaType column already exists in the data, skipping...")
@@ -93,40 +93,6 @@ def with_media_type_column(data: pd.DataFrame) -> pd.DataFrame:
 
     return data
 
-def with_time_since_start_column(data: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add a column with the time since the start of the experiment in hundredths of a nanosecond.
-
-    Args:
-        data (pd.DataFrame): The eye tracking data.
-
-    Returns:
-        pd.DataFrame: The eye tracking data with the time difference column.
-    """
-    if "TimeSinceStart_ns" in data.columns:
-        print(" ⚠️  TimeSinceStart_ns column already exists in the data, skipping...")
-        return data
-
-    if data.empty:
-        print(" ⚠️  No data provided, skipping...")
-        data["TimeSinceStart_ns"] = 0
-        return data
-
-    grouped_data = data.groupby(
-        ["ExperimentId", "SessionId", "ParticipantId", "SequenceId", "SetId"]
-    )
-    groups = [grouped_data.get_group(group) for group in grouped_data.groups]
-
-    for i, group in enumerate(groups):
-        timestamp_column = "Timestamp_ns" if "Timestamp_ns" in group.columns else "StartTimestamp_ns"
-        start_time = group[timestamp_column].min()
-        group = group.copy()
-        group["TimeSinceStart_ns"] = group[timestamp_column] - start_time
-        groups[i] = group
-    data = pd.concat(groups)
-
-    return data
-
 
 def with_time_since_start_end_column(
         data: pd.DataFrame,
@@ -136,11 +102,11 @@ def with_time_since_start_end_column(
     Add columns with the time since the start and end of the experiment in hundredths of a nanosecond.
     
     Args:
-        data (pd.DataFrame): The eye tracking data.
+        data (pd.DataFrame): The gaze data.
         processed_groups (List[pd.DataFrame] | None, optional): The processed gaze data grouped by single sequence experiment. Used to calibrate the start and end frame numbers since the first fixation entry does not necessarily start at the beginning of the sequence. Defaults to None.
 
     Returns:
-        pd.DataFrame: The eye tracking data with the time difference columns.
+        pd.DataFrame: The gaze data with the time difference columns.
     """
     if "StartTimeSinceStart_ns" in data.columns and "EndTimeSinceStart_ns" in data.columns:
         print(" ⚠️  StartTimeSinceStart_ns and EndTimeSinceStart_ns columns already exist in the data, skipping...")
@@ -193,10 +159,10 @@ def with_time_since_last_column(
     Add a column with the time since the previous gaze point in nanoseconds.
 
     Args:
-        data (pd.DataFrame): The eye tracking data.
+        data (pd.DataFrame): The gaze data.
 
     Returns:
-        pd.DataFrame: The eye tracking data with the time since last gaze point column.
+        pd.DataFrame: The gaze data with the time since last gaze point column.
     """
     data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId", "SetId"])
     groups = [data.get_group(group) for group in data.groups]

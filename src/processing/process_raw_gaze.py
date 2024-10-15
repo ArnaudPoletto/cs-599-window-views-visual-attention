@@ -10,23 +10,21 @@ import pandas as pd
 from tqdm import tqdm
 from typing import Any, Dict, List
 
-from src.utils.eye_tracking_data import (
-    with_time_since_start_column,
-)
 from src.utils.file import get_files_recursive
 from src.config import (
-    EYE_TRACKING_RAW_PATH,
-    RAW_EYE_TRACKING_FRAME_WIDTH,
-    RAW_EYE_TRACKING_FRAME_HEIGHT,
-    EYE_TRACKING_PROCESSED_PATH,
-    PROCESSED_EYE_TRACKING_FILE_NAME,
+    GAZE_RAW_PATH,
+    RAW_GAZE_FRAME_WIDTH,
+    RAW_GAZE_FRAME_HEIGHT,
+    GAZE_PROCESSED_PATH,
+    PROCESSED_GAZE_FILE_NAME,
 )
 
 OUTLIER_VALUES = (3000, 1500)
 MAX_TIME_SINCE_START_SEC = 120
-RESAMPLING_RATE = "50ms"  # 20 Hz
+RESAMPLING_RATE = "25ms"  # 40 Hz
 DISPERSION_THRESHOLD_PX = 100.0
-DURATION_THRESHOLD_NSEC = 200.0 * 1e6  # 100 ms in nanoseconds
+DURATION_THRESHOLD_NSEC = 100.0 * 1e6  # 100 ms in nanoseconds
+
 N_HNSEC_IN_NSEC = 100  # Number of hundred nanoseconds in a nanosecond
 N_NSEC_IN_SEC = 1e9  # Number of nanoseconds in a second
 
@@ -39,13 +37,11 @@ def get_raw_data() -> pd.DataFrame:
         pd.DataFrame: The raw gaze data.
     """
     # Get valid source file paths
-    file_paths = get_files_recursive(
-        EYE_TRACKING_RAW_PATH, "Exp[12]_[12][0-9][0-9][12]_*.csv"
-    )
+    file_paths = get_files_recursive(GAZE_RAW_PATH, "Exp[12]_[12][0-9][0-9][12]_*.csv")
     n_files = len(file_paths)
 
     # Check if all files were found
-    all_file_paths = get_files_recursive(EYE_TRACKING_RAW_PATH, "*.csv")
+    all_file_paths = get_files_recursive(GAZE_RAW_PATH, "*.csv")
     ignored_files = set(all_file_paths) - set(file_paths)
     if len(ignored_files) > 0:
         print(
@@ -89,8 +85,8 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
     ]
 
     # Add gaze screen coordinates column and rename gaze pixel coordinates column
-    data["X_sc"] = data["GazeX"] / RAW_EYE_TRACKING_FRAME_WIDTH
-    data["Y_sc"] = data["GazeY"] / RAW_EYE_TRACKING_FRAME_HEIGHT
+    data["X_sc"] = data["GazeX"] / RAW_GAZE_FRAME_WIDTH
+    data["Y_sc"] = data["GazeY"] / RAW_GAZE_FRAME_HEIGHT
     data = data.rename(columns={"GazeX": "X_px", "GazeY": "Y_px"})
 
     # Get experiment, session, set and participant ids
@@ -110,10 +106,14 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
         & ((data["SetId"] == 0) | (data["SetId"] == 1))
     ]
 
+    # Add time since start column
+    grouped_data = data.groupby(
+        ["ExperimentId", "SessionId", "ParticipantId", "SequenceId", "SetId"]
+    )
+    data["TimeSinceStart_ns"] = grouped_data["Timestamp_ns"].transform(lambda x: x - x.min())
+
     # Delete entries recorded after a long time
-    data = with_time_since_start_column(data)
     data = data[data["TimeSinceStart_ns"] <= MAX_TIME_SINCE_START_SEC * N_NSEC_IN_SEC]
-    data = data.drop(columns=["TimeSinceStart_ns"])
 
     # Delete outlier participants
     data = data[
@@ -156,6 +156,7 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
             "X_px": "float32",
             "Y_px": "float32",
             "Timestamp_ns": "int64",
+            "TimeSinceStart_ns": "int64",
         }
     )
 
@@ -172,6 +173,7 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
             "X_px",
             "Y_px",
             "Timestamp_ns",
+            "TimeSinceStart_ns",
         ]
     ]
 
@@ -197,7 +199,9 @@ def get_interpolated_data(
 
     # The conversion does not give good date, but the time unit is correct
     data["DateTime"] = pd.to_datetime(data["Timestamp_ns"], unit="ns")
-    data = data.groupby(["ExperimentId", "SessionId", "ParticipantId", "SequenceId", "SetId"])
+    data = data.groupby(
+        ["ExperimentId", "SessionId", "ParticipantId", "SequenceId", "SetId"]
+    )
     groups = [data.get_group(x) for x in data.groups]
 
     for i, group in tqdm(
@@ -221,6 +225,10 @@ def get_interpolated_data(
         interpolated_group["Timestamp_ns"] = interpolated_group["DateTime"].astype(
             "int64"
         )
+        start_timestamp = interpolated_group["Timestamp_ns"].min()
+        interpolated_group["TimeSinceStart_ns"] = (
+            interpolated_group["Timestamp_ns"] - start_timestamp
+        )
 
         groups[i] = interpolated_group
 
@@ -240,6 +248,7 @@ def get_interpolated_data(
             "X_px": "float32",
             "Y_px": "float32",
             "Timestamp_ns": "int64",
+            "TimeSinceStart_ns": "int64",
         }
     )
 
@@ -255,6 +264,7 @@ def get_interpolated_data(
             "X_px",
             "Y_px",
             "Timestamp_ns",
+            "TimeSinceStart_ns",
         ]
     ]
 
@@ -275,6 +285,10 @@ def get_fixation_data_from_group(
     Returns:
         List[Dict[str, Any]]: The fixation data.
     """
+    # Sort the group by timestamp
+    group = group.sort_values(by="Timestamp_ns")
+    group_start_timestamp = group["Timestamp_ns"].min()
+
     fixation_data = []
     start_index = 0
     is_fixation = False
@@ -283,6 +297,7 @@ def get_fixation_data_from_group(
         start_timestamp = group["Timestamp_ns"].iloc[start_index]
         end_timestamp = group["Timestamp_ns"].iloc[curr_index]
         fixation_duration = end_timestamp - start_timestamp
+        time_since_start = start_timestamp - group_start_timestamp
         if fixation_duration < duration_threshold_ns:
             continue
 
@@ -314,6 +329,7 @@ def get_fixation_data_from_group(
                     "StartTimestamp_ns": start_timestamp,
                     "EndTimestamp_ns": end_timestamp,
                     "Duration_ns": fixation_duration,
+                    "TimeSinceStart_ns": time_since_start,
                 }
             )
         start_index = curr_index
@@ -369,6 +385,7 @@ def get_fixation_data(
             "StartTimestamp_ns": "int64",
             "EndTimestamp_ns": "int64",
             "Duration_ns": "int64",
+            "TimeSinceStart_ns": "int64",
         }
     )
 
@@ -386,6 +403,7 @@ def get_fixation_data(
             "StartTimestamp_ns",
             "EndTimestamp_ns",
             "Duration_ns",
+            "TimeSinceStart_ns",
         ]
     ]
 
@@ -428,12 +446,12 @@ def main() -> None:
 
     # Remove old processed gaze data file
     print("➡️  Removing old gaze data files.")
-    data_file_path = f"{EYE_TRACKING_PROCESSED_PATH}/{PROCESSED_EYE_TRACKING_FILE_NAME}"
+    data_file_path = f"{GAZE_PROCESSED_PATH}/{PROCESSED_GAZE_FILE_NAME}"
     interpolated_data_file_path = (
-        f"{EYE_TRACKING_PROCESSED_PATH}/interpolated_{PROCESSED_EYE_TRACKING_FILE_NAME}"
+        f"{GAZE_PROCESSED_PATH}/interpolated_{PROCESSED_GAZE_FILE_NAME}"
     )
     fixation_data_file_path = (
-        f"{EYE_TRACKING_PROCESSED_PATH}/fixation_{PROCESSED_EYE_TRACKING_FILE_NAME}"
+        f"{GAZE_PROCESSED_PATH}/fixation_{PROCESSED_GAZE_FILE_NAME}"
     )
     if os.path.exists(data_file_path):
         os.remove(data_file_path)
@@ -442,14 +460,16 @@ def main() -> None:
     if os.path.exists(fixation_data_file_path):
         os.remove(fixation_data_file_path)
 
-    os.makedirs(EYE_TRACKING_PROCESSED_PATH, exist_ok=True)
+    os.makedirs(GAZE_PROCESSED_PATH, exist_ok=True)
 
     raw_data = get_raw_data()
     # Get processed data and write to file
     processed_data = process_data(raw_data)
     processed_data.to_csv(data_file_path, index=False)
     del raw_data  # Free memory
-    print(f"✅ Saved processed gaze data to {Path(EYE_TRACKING_PROCESSED_PATH).resolve()} with {len(processed_data):,} entries.")
+    print(
+        f"✅ Saved processed gaze data to {Path(GAZE_PROCESSED_PATH).resolve()} with {len(processed_data):,} entries."
+    )
 
     # Get interpolated data and write to file
     interpolated_data = get_interpolated_data(
@@ -457,7 +477,9 @@ def main() -> None:
     )
     interpolated_data.to_csv(interpolated_data_file_path, index=False)
     del processed_data  # Free memory
-    print(f"✅ Saved interpolated gaze data to {Path(EYE_TRACKING_PROCESSED_PATH).resolve()} with {len(interpolated_data):,} entries.")
+    print(
+        f"✅ Saved interpolated gaze data to {Path(GAZE_PROCESSED_PATH).resolve()} with {len(interpolated_data):,} entries."
+    )
 
     # Get fixation data and write to file
     fixation_data = get_fixation_data(
@@ -467,7 +489,9 @@ def main() -> None:
     )
     fixation_data.to_csv(fixation_data_file_path, index=False)
 
-    print(f"✅ Saved fixation data to {Path(EYE_TRACKING_PROCESSED_PATH).resolve()} with {len(fixation_data):,} entries.")
+    print(
+        f"✅ Saved fixation data to {Path(GAZE_PROCESSED_PATH).resolve()} with {len(fixation_data):,} entries."
+    )
 
 
 if __name__ == "__main__":

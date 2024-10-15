@@ -11,7 +11,7 @@ import numpy as np
 from tqdm import tqdm
 from justpfm import justpfm
 
-from src.utils.eye_tracking_data import get_gaze_data
+from src.utils.gaze_data import get_gaze_data
 from src.utils.kde import get_kde_density
 from src.utils.file import get_set_str
 from src.config import SALIENCY_MAP_IMG_PATH, SALIENCY_MAP_PFM_PATH, IMAGE_WIDTH, IMAGE_HEIGHT

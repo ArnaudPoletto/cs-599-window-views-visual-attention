@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from typing import List, Tuple
 
-from src.utils.eye_tracking_data import (
+from src.utils.gaze_data import (
     get_gaze_data,
     with_time_since_start_column,
     with_time_since_start_end_column,
