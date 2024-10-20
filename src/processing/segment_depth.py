@@ -25,6 +25,7 @@ from src.config import (
 DEFAULT_N_CLUSTERS = 5
 KERNEL_SIZE = 5
 N_SEGMENTS = 1000
+COMPACTNESS = 0.001
 DEPTH_WEIGHT_POWER = 4.0
 FOREGROUND_SCORE_THRESHOLD = 0.2
 SIMILARITY_THRESHOLD = 2.0
@@ -35,6 +36,7 @@ MIN_CLUSTER_SIZE = 20_000
 def get_foreground_mask(
     depth_map: np.ndarray,
     n_segments: int = N_SEGMENTS,
+    compactness: float = COMPACTNESS,
     depth_weight_power: float = DEPTH_WEIGHT_POWER,
     foreground_score_threshold: float = FOREGROUND_SCORE_THRESHOLD,
     similarity_threshold: float = SIMILARITY_THRESHOLD,
@@ -42,7 +44,7 @@ def get_foreground_mask(
 ) -> np.ndarray:
     # Get superpixels and their means
     superpixels = slic(
-        depth_map, n_segments=n_segments, compactness=0.001, start_label=1
+        depth_map, n_segments=n_segments, compactness=compactness, start_label=1
     )
     superpixel_means = np.array(
         [np.mean(depth_map[superpixels == i]) for i in np.unique(superpixels)]
