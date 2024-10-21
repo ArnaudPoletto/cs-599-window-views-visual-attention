@@ -4,6 +4,7 @@ from pathlib import Path
 GLOBAL_DIR = Path(__file__).parent / ".."
 sys.path.append(str(GLOBAL_DIR))
 
+import torch
 
 GENERATED_PATH = str(GLOBAL_DIR / "generated")
 DATA_PATH = str(GLOBAL_DIR / "data")
@@ -13,6 +14,7 @@ DEPTH_PATH = f"{DATA_PATH}/depth"
 SALIENCY_PATH = f"{DATA_PATH}/saliency"
 IMAGES_PATH = f"{DATA_PATH}/images"
 VANISHING_POINT_PATH = f"{DATA_PATH}/vanishing_point"
+MOTION_PATH = f"{DATA_PATH}/motion"
 TRACKING_PATH = f"{DATA_PATH}/tracking"
 
 GAZE_RAW_PATH = f"{GAZE_PATH}/raw"
@@ -25,6 +27,10 @@ SALIENCY_MAP_IMG_PATH = f"{SALIENCY_PATH}/map_img"
 SALIENCY_MAP_PFM_PATH = f"{SALIENCY_PATH}/map_pfm"
 VANISHING_POINT_MAP_IMG_PATH = f"{VANISHING_POINT_PATH}/img"
 VANISHING_POINT_MAP_PFM_PATH = f"{VANISHING_POINT_PATH}/pfm"
+MOTION_ABS_IMG_PATH = f"{MOTION_PATH}/abs_img"
+MOTION_ABS_PFM_PATH = f"{MOTION_PATH}/abs_pfm"
+MOTION_OPF_IMG_PATH = f"{MOTION_PATH}/opf_img"
+MOTION_OPF_PFM_PATH = f"{MOTION_PATH}/opf_pfm"
 
 DEPTH_MAP_VIZ_PATH = f"{GENERATED_PATH}/depth/viz"
 SALIENCY_MAP_VIZ_PATH = f"{GENERATED_PATH}/saliency/viz"
@@ -33,8 +39,9 @@ SALIENCY_VANISHING_POINT_DEPTH_VIZ_PATH = f"{GENERATED_PATH}/saliency_vanishing_
 
 PROCESSED_GAZE_FILE_NAME = "data.csv"
 
-
 RAW_GAZE_FRAME_WIDTH = 6144
 RAW_GAZE_FRAME_HEIGHT = 3072
 IMAGE_WIDTH = 2396
 IMAGE_HEIGHT = 860
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -278,6 +278,7 @@ def main() -> None:
     """
     Main function for computing the vanishing point maps for each sequence.
     """
+    # Parse command line arguments
     args = parse_arguments()
     kde_width = args.kde_width
     kde_height = args.kde_height
