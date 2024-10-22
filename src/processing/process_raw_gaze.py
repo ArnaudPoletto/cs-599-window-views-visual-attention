@@ -84,6 +84,12 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
         (data["GazeX"] != OUTLIER_VALUES[0]) & (data["GazeY"] != OUTLIER_VALUES[1])
     ]
 
+    # Rescale gaze coordinates because they only go up to 6000, 3000
+    max_gaze_x = data["GazeX"].max()
+    max_gaze_y = data["GazeY"].max()
+    data["GazeX"] = data["GazeX"] * (RAW_GAZE_FRAME_WIDTH / max_gaze_x)
+    data["GazeY"] = data["GazeY"] * (RAW_GAZE_FRAME_HEIGHT / max_gaze_y)
+
     # Add gaze screen coordinates column and rename gaze pixel coordinates column
     data["X_sc"] = data["GazeX"] / RAW_GAZE_FRAME_WIDTH
     data["Y_sc"] = data["GazeY"] / RAW_GAZE_FRAME_HEIGHT

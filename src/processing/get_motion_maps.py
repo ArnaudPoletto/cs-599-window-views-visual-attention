@@ -17,7 +17,6 @@ from multiprocessing import Pool
 import torchvision.transforms as T
 from torchvision.models.optical_flow import raft_large, Raft_Large_Weights
 
-warnings.filterwarnings("ignore")
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 os.environ["OMP_NUM_THREADS"] = "1"
 
